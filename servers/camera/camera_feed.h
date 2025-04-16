@@ -33,6 +33,7 @@
 #include "core/io/image.h"
 #include "core/math/transform_2d.h"
 #include "servers/camera_server.h"
+#include "servers/rendering_server.h"
 
 /**
 	The camera server is a singleton object that gives access to the various
@@ -43,19 +44,21 @@ class CameraFeed : public RefCounted {
 	GDCLASS(CameraFeed, RefCounted);
 
 public:
+	enum FeedDataType {
+		FEED_NOIMAGE, // we don't have an image yet
+		FEED_RGB, // TEXTURE contains RGB data
+		FEED_YCBCR, // TEXTURE contains YCbCr data
+		FEED_YCBCR_SEP, // TEXTURE contains Y data, NORMAL_TEXTURE contains Cb data, SPECULAR_TEXTURE contains Cr data
+		FEED_EXTERNAL, // specific for android atm, camera feed is managed externally, assumed RGB for now
+		FEED_UNSUPPORTED, // unsupported type
+		FEED_RGBA, // TEXTURE contains RGBA data
+		FEED_NV12 // TEXTURE contains Y data, NORMAL_TEXTURE contains CbCr data
+	};
+
 	enum FeedPosition {
 		FEED_UNSPECIFIED, // we have no idea
 		FEED_FRONT, // this is a camera on the front of the device
 		FEED_BACK // this is a camera on the back of the device
-	};
-
-	enum FeedDataType {
-		FEED_UNSUPPORTED, // unsupported type
-		FEED_RGB, // TEXTURE contains RGB data
-		FEED_RGBA, // TEXTURE contains RGBA data
-		FEED_NV12, // TEXTURE contains Y data, NORMAL_TEXTURE contains CbCr data
-		FEED_YCBCR, // TEXTURE contains YCbCr data
-		FEED_YCBCR_SEP // TEXTURE contains Y data, NORMAL_TEXTURE contains Cb data, SPECULAR_TEXTURE contains Cr data
 	};
 
 private:
