@@ -213,6 +213,10 @@ def generateBuildTasks(String flavor = "template", String edition = "standard", 
     return buildTasks
 }
 
+def isAndroidStudio() {
+    return System.getProperty('idea.active') == "true"
+}
+
 /**
  * Generate the Godot Editor binaries for Android devices.
  *

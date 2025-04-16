@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  platform_config.h                                                     */
+/*  camera_android.h                                                      */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -28,6 +28,55 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#pragma once
+#ifndef CAMERA_ANDROID_H
+#define CAMERA_ANDROID_H
 
-#include <malloc.h>
+#include "servers/camera/camera_feed.h"
+#include "servers/camera_server.h"
+
+#include <camera/NdkCameraDevice.h>
+#include <camera/NdkCameraError.h>
+#include <camera/NdkCameraManager.h>
+#include <camera/NdkCameraMetadataTags.h>
+#include <media/NdkImageReader.h>
+
+class CameraFeedAndroid : public CameraFeed {
+private:
+    String camera_id;
+    int32_t format;
+
+	ACameraManager *manager = nullptr;
+	ACameraDevice *device = nullptr;
+	AImageReader *reader = nullptr;
+	ACameraCaptureSession *session = nullptr;
+	ACaptureRequest *request = nullptr;
+
+    static void onError(void *context, ACameraDevice *p_device, int error);
+	static void onDisconnected(void *context, ACameraDevice *p_device);
+    static void onImage(void *context, AImageReader *p_reader);
+    static void onSessionReady(void *context, ACameraCaptureSession *session);
+    static void onSessionActive(void *context, ACameraCaptureSession *session);
+    static void onSessionClosed(void *context, ACameraCaptureSession *session);
+
+protected:
+public:
+	CameraFeedAndroid(ACameraManager *manager, const char *id, int32_t position, int32_t width, int32_t height,
+                      int32_t format, int32_t orientation);
+	virtual ~CameraFeedAndroid();
+
+	bool activate_feed();
+	void deactivate_feed();
+};
+
+class CameraAndroid : public CameraServer {
+private:
+	ACameraManager *cameraManager;
+
+	void update_feeds();
+
+public:
+	CameraAndroid();
+	~CameraAndroid();
+};
+
+#endif // CAMERA_ANDROID_H
