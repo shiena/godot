@@ -53,6 +53,10 @@ String GetFormatName(const int32_t &format) {
 //////////////////////////////////////////////////////////////////////////
 // CameraFeedAndroid - Subclass for our camera feed on Android
 
+CameraFeedAndroid(ACameraManager *manager, ACameraMetadata *metadata) {
+	this->manager = manager;
+}
+
 CameraFeedAndroid::CameraFeedAndroid(ACameraManager *manager, const char *id, int32_t position, int32_t width,
 		int32_t height, int32_t format, int32_t orientation) {
 	this->manager = manager;
@@ -226,6 +230,19 @@ bool CameraFeedAndroid::activate_feed() {
 	return true;
 }
 
+bool CameraFeedAndroid::set_format(int p_index, const Dictionary &p_parameters) {
+    return false;
+}
+
+Array CameraFeedAndroid::get_formats() const {
+    return Array();
+}
+
+FeedFormat CameraFeedAndroid::get_format() const {
+    FeedFormat feed_format = {};
+    return feed_format;
+}
+
 void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 	auto *feed = static_cast<CameraFeedAndroid *>(context);
 
@@ -312,6 +329,8 @@ void CameraAndroid::update_feeds() {
 		const char *id = cameraIds->cameraIds[c];
 		ACameraMetadata *metadata;
 		ACameraManager_getCameraCharacteristics(cameraManager, id, &metadata);
+        Ref<CameraFeedAndroid> feed = new CameraFeedAndroid(cameraManager, metadata);
+		add_feed(feed);
 
 		// Get position
 		ACameraMetadata_const_entry lensInfo;
@@ -339,12 +358,7 @@ void CameraAndroid::update_feeds() {
 					format == AIMAGE_FORMAT_RGBA_8888) {
 				int32_t width = formats.data.i32[f + 1];
 				int32_t height = formats.data.i32[f + 2];
-				Ref<CameraFeedAndroid> feed = new CameraFeedAndroid(cameraManager, id,
-						position,
-						width,
-						height,
-						format,
-						cameraOrientation);
+				Ref<CameraFeedAndroid> feed = new CameraFeedAndroid(cameraManager, metadata);
 				add_feed(feed);
 				print_line("Added camera feed: ", feed->get_name());
 			}
