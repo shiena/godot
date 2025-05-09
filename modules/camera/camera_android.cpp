@@ -89,7 +89,7 @@ CameraFeedAndroid::~CameraFeedAndroid() {
 		deactivate_feed();
 	}
 	if (metadata != nullptr) {
-		ACameraMetadata_free(metadata);
+		Camera2API::ACameraMetadata_free_ptr(metadata);
 	}
 }
 
@@ -115,7 +115,7 @@ void CameraFeedAndroid::_set_rotation() {
 void CameraFeedAndroid::_add_formats() {
 	// Get supported formats
 	ACameraMetadata_const_entry formats;
-	camera_status_t status = ACameraMetadata_getConstEntry(metadata, ACAMERA_SCALER_AVAILABLE_STREAM_CONFIGURATIONS, &formats);
+	camera_status_t status = Camera2API::ACameraMetadata_getConstEntry_ptr(metadata, ACAMERA_SCALER_AVAILABLE_STREAM_CONFIGURATIONS, &formats);
 
 	if (status == ACAMERA_OK) {
 		for (uint32_t f = 0; f < formats.count; f += 4) {
@@ -158,7 +158,7 @@ bool CameraFeedAndroid::activate_feed() {
 		.onDisconnected = onDisconnected,
 		.onError = onError,
 	};
-	camera_status_t c_status = ACameraManager_openCamera(manager, camera_id.utf8().get_data(), &deviceCallbacks, &device);
+	camera_status_t c_status = Camera2API::ACameraManager_openCamera_ptr(manager, camera_id.utf8().get_data(), &deviceCallbacks, &device);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
@@ -166,7 +166,7 @@ bool CameraFeedAndroid::activate_feed() {
 
 	// Create image reader
 	const FeedFormat &feed_format = formats[selected_format];
-	media_status_t m_status = AImageReader_new(feed_format.width, feed_format.height, feed_format.pixel_format, 1, &reader);
+	media_status_t m_status = Camera2API::AImageReader_new_ptr(feed_format.width, feed_format.height, feed_format.pixel_format, 1, &reader);
 	if (m_status != AMEDIA_OK) {
 		onError(this, device, m_status);
 		return false;
@@ -177,7 +177,7 @@ bool CameraFeedAndroid::activate_feed() {
 		.context = this,
 		.onImageAvailable = onImage,
 	};
-	m_status = AImageReader_setImageListener(reader, &listener);
+	m_status = Camera2API::AImageReader_setImageListener_ptr(reader, &listener);
 	if (m_status != AMEDIA_OK) {
 		onError(this, device, m_status);
 		return false;
@@ -185,7 +185,7 @@ bool CameraFeedAndroid::activate_feed() {
 
 	// Get image surface
 	ANativeWindow *surface;
-	m_status = AImageReader_getWindow(reader, &surface);
+	m_status = Camera2API::AImageReader_getWindow_ptr(reader, &surface);
 	if (m_status != AMEDIA_OK) {
 		onError(this, device, m_status);
 		return false;
@@ -193,20 +193,20 @@ bool CameraFeedAndroid::activate_feed() {
 
 	// Prepare session outputs
 	ACaptureSessionOutput *output = nullptr;
-	c_status = ACaptureSessionOutput_create(surface, &output);
+	c_status = Camera2API::ACaptureSessionOutput_create_ptr(surface, &output);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
 	}
 
 	ACaptureSessionOutputContainer *outputs = nullptr;
-	c_status = ACaptureSessionOutputContainer_create(&outputs);
+	c_status = Camera2API::ACaptureSessionOutputContainer_create_ptr(&outputs);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
 	}
 
-	c_status = ACaptureSessionOutputContainer_add(outputs, output);
+	c_status = Camera2API::ACaptureSessionOutputContainer_add_ptr(outputs, output);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
@@ -219,14 +219,14 @@ bool CameraFeedAndroid::activate_feed() {
 		.onReady = onSessionReady,
 		.onActive = onSessionActive
 	};
-	c_status = ACameraDevice_createCaptureSession(device, outputs, &sessionStateCallbacks, &session);
+	c_status = Camera2API::ACameraDevice_createCaptureSession_ptr(device, outputs, &sessionStateCallbacks, &session);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
 	}
 
 	// Create capture request
-	c_status = ACameraDevice_createCaptureRequest(device, TEMPLATE_PREVIEW, &request);
+	c_status = Camera2API::ACameraDevice_createCaptureRequest_ptr(device, TEMPLATE_PREVIEW, &request);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
@@ -234,20 +234,20 @@ bool CameraFeedAndroid::activate_feed() {
 
 	// Set capture target
 	ACameraOutputTarget *imageTarget = nullptr;
-	c_status = ACameraOutputTarget_create(surface, &imageTarget);
+	c_status = Camera2API::ACameraOutputTarget_create_ptr(surface, &imageTarget);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
 	}
 
-	c_status = ACaptureRequest_addTarget(request, imageTarget);
+	c_status = Camera2API::ACaptureRequest_addTarget_ptr(request, imageTarget);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
 	}
 
 	// Start capture
-	c_status = ACameraCaptureSession_setRepeatingRequest(session, nullptr, 1, &request, nullptr);
+	c_status = Camera2API::ACameraCaptureSession_setRepeatingRequest_ptr(session, nullptr, 1, &request, nullptr);
 	if (c_status != ACAMERA_OK) {
 		onError(this, device, c_status);
 		return false;
@@ -290,7 +290,7 @@ void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 
 	// Get image
 	AImage *image = nullptr;
-	media_status_t status = AImageReader_acquireNextImage(p_reader, &image);
+	media_status_t status = Camera2API::AImageReader_acquireNextImage_ptr(p_reader, &image);
 	ERR_FAIL_COND(status != AMEDIA_OK);
 
 	// Get image data
@@ -302,7 +302,7 @@ void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 	int height = format.height;
 	switch (format.pixel_format) {
 		case AIMAGE_FORMAT_YUV_420_888:
-			AImage_getPlaneData(image, 0, &data, &len);
+			Camera2API::AImage_getPlaneData_ptr(image, 0, &data, &len);
 			if (len <= 0) {
 				return;
 			}
@@ -312,9 +312,9 @@ void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 			}
 			memcpy(data_y.ptrw(), data, len);
 
-			AImage_getPlanePixelStride(image, 1, &pixel_stride);
-			AImage_getPlaneRowStride(image, 1, &row_stride);
-			AImage_getPlaneData(image, 1, &data, &len);
+			Camera2API::AImage_getPlanePixelStride_ptr(image, 1, &pixel_stride);
+			Camera2API::AImage_getPlaneRowStride_ptr(image, 1, &row_stride);
+			Camera2API::AImage_getPlaneData_ptr(image, 1, &data, &len);
 			if (len <= 0) {
 				return;
 			}
@@ -330,7 +330,7 @@ void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 			feed->set_ycbcr_images(image_y, image_uv);
 			break;
 		case AIMAGE_FORMAT_RGBA_8888:
-			AImage_getPlaneData(image, 0, &data, &len);
+			Camera2API::AImage_getPlaneData_ptr(image, 0, &data, &len);
 			if (len <= 0) {
 				return;
 			}
@@ -345,7 +345,7 @@ void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 			feed->set_rgb_image(image_y);
 			break;
 		case AIMAGE_FORMAT_RGB_888:
-			AImage_getPlaneData(image, 0, &data, &len);
+			Camera2API::AImage_getPlaneData_ptr(image, 0, &data, &len);
 			if (len <= 0) {
 				return;
 			}
@@ -367,7 +367,7 @@ void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 	feed->_set_rotation();
 
 	// Release image
-	AImage_delete(image);
+	Camera2API::AImage_delete_ptr(image);
 
 	feed->emit_signal(SNAME("frame_changed"));
 }
@@ -386,23 +386,23 @@ void CameraFeedAndroid::onSessionClosed(void *context, ACameraCaptureSession *se
 
 void CameraFeedAndroid::deactivate_feed() {
 	if (session != nullptr) {
-		ACameraCaptureSession_stopRepeating(session);
-		ACameraCaptureSession_close(session);
+		Camera2API::ACameraCaptureSession_stopRepeating_ptr(session);
+		Camera2API::ACameraCaptureSession_close_ptr(session);
 		session = nullptr;
 	}
 
 	if (request != nullptr) {
-		ACaptureRequest_free(request);
+		Camera2API::ACaptureRequest_free_ptr(request);
 		request = nullptr;
 	}
 
 	if (reader != nullptr) {
-		AImageReader_delete(reader);
+		Camera2API::AImageReader_delete_ptr(reader);
 		reader = nullptr;
 	}
 
 	if (device != nullptr) {
-		ACameraDevice_close(device);
+		Camera2API::ACameraDevice_close_ptr(device);
 		device = nullptr;
 	}
 }
@@ -422,8 +422,9 @@ void CameraFeedAndroid::onDisconnected(void *context, ACameraDevice *p_device) {
 // CameraAndroid - Subclass for our camera server on Android
 
 void CameraAndroid::update_feeds() {
+	ERR_FAIL_COND_MSG(!Camera2API::library_loaded, "Camera2 library could not be loaded.");
 	ACameraIdList *cameraIds = nullptr;
-	camera_status_t c_status = ACameraManager_getCameraIdList(cameraManager, &cameraIds);
+	camera_status_t c_status = Camera2API::ACameraManager_getCameraIdList_ptr(cameraManager, &cameraIds);
 	ERR_FAIL_COND(c_status != ACAMERA_OK);
 
 	// remove existing devices
@@ -434,14 +435,14 @@ void CameraAndroid::update_feeds() {
 	for (int c = 0; c < cameraIds->numCameras; ++c) {
 		const char *id = cameraIds->cameraIds[c];
 		ACameraMetadata *metadata = nullptr;
-		ACameraManager_getCameraCharacteristics(cameraManager, id, &metadata);
+		Camera2API::ACameraManager_getCameraCharacteristics_ptr(cameraManager, id, &metadata);
 		if (!metadata) {
 			continue;
 		}
 
 		// Get sensor orientation
 		ACameraMetadata_const_entry orientation;
-		c_status = ACameraMetadata_getConstEntry(metadata, ACAMERA_SENSOR_ORIENTATION, &orientation);
+		c_status = Camera2API::ACameraMetadata_getConstEntry_ptr(metadata, ACAMERA_SENSOR_ORIENTATION, &orientation);
 		int32_t cameraOrientation;
 		if (c_status == ACAMERA_OK) {
 			cameraOrientation = orientation.data.i32[0];
@@ -454,9 +455,9 @@ void CameraAndroid::update_feeds() {
 		ACameraMetadata_const_entry lensInfo;
 		CameraFeed::FeedPosition position = CameraFeed::FEED_UNSPECIFIED;
 		camera_status_t status;
-		status = ACameraMetadata_getConstEntry(metadata, ACAMERA_LENS_FACING, &lensInfo);
+		status = Camera2API::ACameraMetadata_getConstEntry_ptr(metadata, ACAMERA_LENS_FACING, &lensInfo);
 		if (status != ACAMERA_OK) {
-			ACameraMetadata_free(metadata);
+			Camera2API::ACameraMetadata_free_ptr(metadata);
 			continue;
 		}
 		uint8_t lens_facing = static_cast<acamera_metadata_enum_android_lens_facing_t>(lensInfo.data.u8[0]);
@@ -465,7 +466,7 @@ void CameraAndroid::update_feeds() {
 		} else if (lens_facing == ACAMERA_LENS_FACING_BACK) {
 			position = CameraFeed::FEED_BACK;
 		} else {
-			ACameraMetadata_free(metadata);
+			Camera2API::ACameraMetadata_free_ptr(metadata);
 			continue;
 		}
 
@@ -473,7 +474,7 @@ void CameraAndroid::update_feeds() {
 		add_feed(feed);
 	}
 
-	ACameraManager_deleteCameraIdList(cameraIds);
+	Camera2API::ACameraManager_deleteCameraIdList_ptr(cameraIds);
 }
 
 void CameraAndroid::remove_all_feeds() {
@@ -483,12 +484,13 @@ void CameraAndroid::remove_all_feeds() {
 	}
 
 	if (cameraManager != nullptr) {
-		ACameraManager_delete(cameraManager);
+		Camera2API::ACameraManager_delete(cameraManager);
 		cameraManager = nullptr;
 	}
 }
 
 void CameraAndroid::set_monitoring_feeds(bool p_monitoring_feeds) {
+	ERR_FAIL_COND_MSG(!Camera2API::library_loaded, "Camera2 library could not be loaded.");
 	if (p_monitoring_feeds == monitoring_feeds) {
 		return;
 	}
@@ -496,13 +498,19 @@ void CameraAndroid::set_monitoring_feeds(bool p_monitoring_feeds) {
 	CameraServer::set_monitoring_feeds(p_monitoring_feeds);
 	if (p_monitoring_feeds) {
 		if (cameraManager == nullptr) {
-			cameraManager = ACameraManager_create();
+			cameraManager = Camera2API::ACameraManager_create_ptr();
 		}
 
 		// Update feeds
 		update_feeds();
 	} else {
 		remove_all_feeds();
+	}
+}
+
+CameraAndroid::CameraAndroid() : CameraServer(){
+	if (!Camera2API::load_library()) {
+		ERR_PRINT("Camera2 library could not be loaded.");
 	}
 }
 

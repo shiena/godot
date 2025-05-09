@@ -33,11 +33,7 @@
 #include "servers/camera/camera_feed.h"
 #include "servers/camera_server.h"
 
-#include <camera/NdkCameraDevice.h>
-#include <camera/NdkCameraError.h>
-#include <camera/NdkCameraManager.h>
-#include <camera/NdkCameraMetadataTags.h>
-#include <media/NdkImageReader.h>
+#include "camera2_api_android.h"
 
 class CameraFeedAndroid : public CameraFeed {
 	GDSOFTCLASS(CameraFeedAndroid, CameraFeed);
@@ -92,5 +88,6 @@ private:
 public:
 	void set_monitoring_feeds(bool p_monitoring_feeds) override;
 
+	CameraAndroid();
 	~CameraAndroid();
 };

@@ -17,7 +17,8 @@ elif env["platform"] == "macos":
 
 elif env["platform"] == "android":
     env_camera.add_source_files(env.modules_sources, "camera_android.cpp")
-    env.Append(LIBS=["camera2ndk", "mediandk"])
+    env_camera.add_source_files(env.modules_sources, "camera2_api_android.cpp")
+    env.Append(LIBS=["mediandk"])
 
 elif env["platform"] == "linuxbsd":
     env_camera.add_source_files(env.modules_sources, "camera_linux.cpp")
