@@ -152,6 +152,7 @@
 			// do Y
 			size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0);
 			size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
+			size_t row_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
 
 			if ((width[0] != new_width) || (height[0] != new_height)) {
 				width[0] = new_width;
@@ -160,7 +161,15 @@
 			}
 
 			uint8_t *w = img_data[0].ptrw();
-			memcpy(w, dataY, new_width * new_height);
+			if (new_width == row_stride) {
+				memcpy(w, dataY, new_width * new_height);
+			} else {
+				for (size_t i = 0; i < new_height; i++) {
+					memcpy(w, dataY, new_width);
+					w += new_width;
+					dataY += row_stride;
+				}
+			}
 
 			img[0].instantiate();
 			img[0]->set_data(new_width, new_height, 0, Image::FORMAT_R8, img_data[0]);
@@ -170,6 +179,7 @@
 			// do CbCr
 			size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 1);
 			size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1);
+			size_t row_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
 
 			if ((width[1] != new_width) || (height[1] != new_height)) {
 				width[1] = new_width;
@@ -178,7 +188,15 @@
 			}
 
 			uint8_t *w = img_data[1].ptrw();
-			memcpy(w, dataCbCr, 2 * new_width * new_height);
+			if (new_width * 2 == row_stride) {
+				memcpy(w, dataCbCr, 2 * new_width * new_height);
+			} else {
+				for (size_t i = 0; i < new_height; i++) {
+					memcpy(w, dataCbCr, new_width * 2);
+					w += new_width * 2;
+					dataCbCr += row_stride;
+				}
+			}
 
 			///TODO OpenGL doesn't support FORMAT_RG8, need to do some form of conversion
 			img[1].instantiate();
@@ -204,6 +222,7 @@ class CameraFeedMacOS : public CameraFeed {
 private:
 	AVCaptureDevice *device;
 	MyCaptureSession *capture_session;
+	bool device_locked;
 
 public:
 	AVCaptureDevice *get_device() const;
@@ -214,6 +233,9 @@ public:
 
 	bool activate_feed() override;
 	void deactivate_feed() override;
+
+	bool set_format(int p_index, const Dictionary &p_parameters) override;
+	Array get_formats() const override;
 
 #if TARGET_OS_IPHONE
 	void update_transform();
@@ -227,6 +249,7 @@ AVCaptureDevice *CameraFeedMacOS::get_device() const {
 CameraFeedMacOS::CameraFeedMacOS() {
 	device = nullptr;
 	capture_session = nullptr;
+	device_locked = false;
 }
 
 void CameraFeedMacOS::set_device(AVCaptureDevice *p_device) {
@@ -247,6 +270,15 @@ bool CameraFeedMacOS::activate_feed() {
 	if (capture_session) {
 		// Already recording!
 	} else {
+		// Configure device format if specified.
+		if (selected_format != -1) {
+			NSError *error;
+			if (!device_locked) {
+				device_locked = [device lockForConfiguration:&error];
+				ERR_FAIL_COND_V_MSG(!device_locked, false, error.localizedFailureReason.UTF8String);
+			}
+			[device setActiveFormat:device.formats[selected_format]];
+		}
 		// Start camera capture, check permission.
 		if (@available(macOS 10.14, *)) {
 			AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
@@ -275,6 +307,61 @@ void CameraFeedMacOS::deactivate_feed() {
 		[capture_session cleanup];
 		capture_session = nullptr;
 	};
+	if (device_locked) {
+		[device unlockForConfiguration];
+		device_locked = false;
+	}
+}
+
+bool CameraFeedMacOS::set_format(int p_index, const Dictionary &p_parameters) {
+	if (p_index == -1) {
+		selected_format = p_index;
+		if (is_active()) {
+			[capture_session beginConfiguration];
+		}
+		if (device_locked) {
+			[device unlockForConfiguration];
+			device_locked = false;
+		}
+		if (is_active()) {
+			[capture_session commitConfiguration];
+		}
+		return true;
+	}
+	ERR_FAIL_INDEX_V((unsigned int)p_index, device.formats.count, false);
+	if (is_active()) {
+		if (!device_locked) {
+			NSError *error;
+			device_locked = [device lockForConfiguration:&error];
+			ERR_FAIL_COND_V_MSG(!device_locked, false, error.localizedFailureReason.UTF8String);
+		}
+		[capture_session beginConfiguration];
+		[device setActiveFormat:device.formats[p_index]];
+	}
+	selected_format = p_index;
+	if (is_active()) {
+		[capture_session commitConfiguration];
+	}
+	return true;
+}
+
+Array CameraFeedMacOS::get_formats() const {
+	Array result;
+	for (AVCaptureDeviceFormat *format in device.formats) {
+		Dictionary dictionary;
+		CMFormatDescriptionRef formatDescription = format.formatDescription;
+		CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(formatDescription);
+		dictionary["width"] = dimension.width;
+		dictionary["height"] = dimension.height;
+		FourCharCode fourcc = CMFormatDescriptionGetMediaSubType(formatDescription);
+		dictionary["format"] =
+				String::chr((char)(fourcc >> 24) & 0xFF) +
+				String::chr((char)(fourcc >> 16) & 0xFF) +
+				String::chr((char)(fourcc >> 8) & 0xFF) +
+				String::chr((char)(fourcc >> 0) & 0xFF);
+		result.push_back(dictionary);
+	}
+	return result;
 }
 
 #if TARGET_OS_IPHONE
