@@ -59,8 +59,14 @@ public:
 
 private:
 	int id; // unique id for this, for internal use in case feeds are removed
-	const StringName format_changed_signal_name = "format_changed";
-	const StringName frame_changed_signal_name = "frame_changed";
+	const static StringName format_changed_signal_name() {
+		static const StringName name = "format_changed";
+		return name;
+	}
+	const static StringName frame_changed_signal_name() {
+		static const StringName name = "frame_changed";
+		return name;
+	}
 
 protected:
 	struct FeedFormat {
