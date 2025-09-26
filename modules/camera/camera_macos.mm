@@ -48,6 +48,7 @@
 
 	AVCaptureDeviceInput *input;
 	AVCaptureVideoDataOutput *output;
+	AVCaptureDeviceFormat *selectedFormat;
 }
 
 @end
@@ -62,6 +63,7 @@
 		height[0] = 0;
 		width[1] = 0;
 		height[1] = 0;
+		selectedFormat = p_device.activeFormat;
 
 		[self beginConfiguration];
 
@@ -76,7 +78,30 @@
 		if (!output) {
 			print_line("Couldn't get output device for camera");
 		} else {
-			NSDictionary *settings = @{ (NSString *)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) };
+			// Use the pixel format from the selected device format if available
+			OSType pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange; // Default fallback
+			if (selectedFormat) {
+				CMFormatDescriptionRef formatDescription = selectedFormat.formatDescription;
+				FourCharCode mediaSubType = CMFormatDescriptionGetMediaSubType(formatDescription);
+
+				// Map common formats to supported pixel formats
+				switch (mediaSubType) {
+					case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
+					case kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
+						pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
+						break;
+					case kCVPixelFormatType_32BGRA:
+					case kCVPixelFormatType_32ARGB:
+						pixelFormat = kCVPixelFormatType_32BGRA;
+						break;
+					default:
+						// For unsupported formats, try to use YUV420 as fallback
+						pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
+						break;
+				}
+			}
+
+			NSDictionary *settings = @{ (NSString *)kCVPixelBufferPixelFormatTypeKey : @(pixelFormat) };
 			output.videoSettings = settings;
 
 			// discard if the data output queue is blocked (as we process the still image)
@@ -127,6 +152,16 @@
 
 	// For now, version 1, we're just doing the bare minimum to make this work...
 	CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+	OSType pixelFormatType = CVPixelBufferGetPixelFormatType(pixelBuffer);
+
+	// Handle different pixel formats
+	if (pixelFormatType == kCVPixelFormatType_32BGRA) {
+		// Handle BGRA format differently
+		[self processBGRABuffer:pixelBuffer];
+		return;
+	}
+
+	// Default YUV420 processing
 	// int _width = CVPixelBufferGetWidth(pixelBuffer);
 	// int _height = CVPixelBufferGetHeight(pixelBuffer);
 
@@ -186,6 +221,57 @@
 	}
 
 	// and unlock
+	CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+}
+
+- (void)processBGRABuffer:(CVImageBufferRef)pixelBuffer {
+	CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+
+	size_t new_width = CVPixelBufferGetWidth(pixelBuffer);
+	size_t new_height = CVPixelBufferGetHeight(pixelBuffer);
+	size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+	unsigned char *baseAddress = (unsigned char *)CVPixelBufferGetBaseAddress(pixelBuffer);
+
+	if (baseAddress == nullptr) {
+		print_line("Couldn't access BGRA pixel buffer data");
+	} else {
+		// Resize buffer if needed
+		if ((width[0] != new_width) || (height[0] != new_height)) {
+			width[0] = new_width;
+			height[0] = new_height;
+			img_data[0].resize(new_width * new_height * 4); // BGRA = 4 bytes per pixel
+		}
+
+		uint8_t *w = img_data[0].ptrw();
+
+		// Copy BGRA data
+		if (bytesPerRow == new_width * 4) {
+			// Direct copy if no padding
+			memcpy(w, baseAddress, new_width * new_height * 4);
+		} else {
+			// Copy row by row if there's padding
+			for (size_t row = 0; row < new_height; row++) {
+				memcpy(w + row * new_width * 4, baseAddress + row * bytesPerRow, new_width * 4);
+			}
+		}
+
+		// Convert BGRA to RGBA by swapping B and R channels
+		for (size_t i = 0; i < new_width * new_height; i++) {
+			uint8_t *pixel = w + i * 4;
+			uint8_t temp = pixel[0]; // B
+			pixel[0] = pixel[2];     // R -> B
+			pixel[2] = temp;         // B -> R
+			// G and A remain the same
+		}
+
+		Ref<Image> img;
+		img.instantiate();
+		img->set_data(new_width, new_height, 0, Image::FORMAT_RGBA8, img_data[0]);
+
+		// Set the image directly (not YCbCr)
+		feed->set_rgb_image(img);
+	}
+
 	CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 }
 
