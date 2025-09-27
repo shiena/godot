@@ -49,6 +49,7 @@
 	AVCaptureDeviceInput *input;
 	AVCaptureVideoDataOutput *output;
 	AVCaptureDeviceFormat *selectedFormat;
+	bool formats_updated;
 }
 
 @end
@@ -64,6 +65,7 @@
 		width[1] = 0;
 		height[1] = 0;
 		selectedFormat = p_device.activeFormat;
+		formats_updated = false;
 
 		[self beginConfiguration];
 
@@ -184,6 +186,22 @@
 			size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0);
 			size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
 
+			// Update format information with actual capture size on first frame
+			if (!formats_updated && new_width > 0 && new_height > 0) {
+				Ref<CameraFeedMacOS> macos_feed = Object::cast_to<CameraFeedMacOS>(feed.ptr());
+				if (macos_feed.is_valid()) {
+					// Find the current format index and update it with actual dimensions
+					AVCaptureDevice *device = macos_feed->get_device();
+					if (device && selectedFormat) {
+						NSUInteger formatIndex = [device.formats indexOfObject:selectedFormat];
+						if (formatIndex != NSNotFound) {
+							macos_feed->update_format_with_actual_size((int)formatIndex, (int)new_width, (int)new_height);
+						}
+					}
+				}
+				formats_updated = true;
+			}
+
 			if ((width[0] != new_width) || (height[0] != new_height)) {
 				width[0] = new_width;
 				height[0] = new_height;
@@ -235,6 +253,22 @@
 	if (baseAddress == nullptr) {
 		print_line("Couldn't access BGRA pixel buffer data");
 	} else {
+		// Update format information with actual capture size on first frame
+		if (!formats_updated && new_width > 0 && new_height > 0) {
+			Ref<CameraFeedMacOS> macos_feed = Object::cast_to<CameraFeedMacOS>(feed.ptr());
+			if (macos_feed.is_valid()) {
+				// Find the current format index and update it with actual dimensions
+				AVCaptureDevice *device = macos_feed->get_device();
+				if (device && selectedFormat) {
+					NSUInteger formatIndex = [device.formats indexOfObject:selectedFormat];
+					if (formatIndex != NSNotFound) {
+						macos_feed->update_format_with_actual_size((int)formatIndex, (int)new_width, (int)new_height);
+					}
+				}
+			}
+			formats_updated = true;
+		}
+
 		// Resize buffer if needed
 		if ((width[0] != new_width) || (height[0] != new_height)) {
 			width[0] = new_width;
@@ -287,6 +321,7 @@ private:
 	AVCaptureDevice *device;
 	MyCaptureSession *capture_session;
 	bool format_locked;
+	mutable Array cached_formats;
 
 public:
 	AVCaptureDevice *get_device() const;
@@ -300,6 +335,8 @@ public:
 
 	bool set_format(int p_index, const Dictionary &p_parameters) override;
 	Array get_formats() const override;
+	void update_formats();
+	void update_format_with_actual_size(int format_index, int actual_width, int actual_height);
 };
 
 AVCaptureDevice *CameraFeedMacOS::get_device() const {
@@ -310,6 +347,7 @@ CameraFeedMacOS::CameraFeedMacOS() {
 	device = nullptr;
 	capture_session = nullptr;
 	format_locked = false;
+	cached_formats = Array();
 }
 
 void CameraFeedMacOS::set_device(AVCaptureDevice *p_device) {
@@ -343,17 +381,20 @@ bool CameraFeedMacOS::activate_feed() {
 			AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
 			if (status == AVAuthorizationStatusAuthorized) {
 				capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
+				update_formats();
 			} else if (status == AVAuthorizationStatusNotDetermined) {
 				// Request permission.
 				[AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo
 										 completionHandler:^(BOOL granted) {
 											 if (granted) {
 												 capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
+												 update_formats();
 											 }
 										 }];
 			}
 		} else {
 			capture_session = [[MyCaptureSession alloc] initForFeed:this andDevice:device];
+			update_formats();
 		}
 	};
 
@@ -384,6 +425,10 @@ bool CameraFeedMacOS::set_format(int p_index, const Dictionary &p_parameters) {
 }
 
 Array CameraFeedMacOS::get_formats() const {
+	if (cached_formats.size() > 0) {
+		return cached_formats;
+	}
+
 	Array result;
 	for (AVCaptureDeviceFormat *format in device.formats) {
 		Dictionary dictionary;
@@ -400,6 +445,43 @@ Array CameraFeedMacOS::get_formats() const {
 		result.push_back(dictionary);
 	}
 	return result;
+}
+
+void CameraFeedMacOS::update_formats() {
+	if (!device) {
+		return;
+	}
+
+	cached_formats.clear();
+
+	for (AVCaptureDeviceFormat *format in device.formats) {
+		Dictionary dictionary;
+		CMFormatDescriptionRef formatDescription = format.formatDescription;
+		CMVideoDimensions dimension = CMVideoFormatDescriptionGetDimensions(formatDescription);
+
+		// Use the format description dimensions as base
+		// These should match the actual capture dimensions for most cases
+		dictionary["width"] = dimension.width;
+		dictionary["height"] = dimension.height;
+
+		FourCharCode fourcc = CMFormatDescriptionGetMediaSubType(formatDescription);
+		dictionary["format"] =
+				String::chr((char)(fourcc >> 24) & 0xFF) +
+				String::chr((char)(fourcc >> 16) & 0xFF) +
+				String::chr((char)(fourcc >> 8) & 0xFF) +
+				String::chr((char)(fourcc >> 0) & 0xFF);
+
+		cached_formats.push_back(dictionary);
+	}
+}
+
+void CameraFeedMacOS::update_format_with_actual_size(int format_index, int actual_width, int actual_height) {
+	if (format_index >= 0 && format_index < cached_formats.size()) {
+		Dictionary format_dict = cached_formats[format_index];
+		format_dict["width"] = actual_width;
+		format_dict["height"] = actual_height;
+		cached_formats[format_index] = format_dict;
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -488,6 +570,7 @@ void CameraMacOS::update_feeds() {
 			Ref<CameraFeedMacOS> newfeed;
 			newfeed.instantiate();
 			newfeed->set_device(device);
+			newfeed->update_formats();
 
 			// assume display camera so inverse
 			Transform2D transform = Transform2D(-1.0, 0.0, 0.0, -1.0, 1.0, 1.0);
