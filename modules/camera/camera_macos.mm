@@ -33,9 +33,17 @@
 
 #import "camera_macos.h"
 
+#include "core/math/math_funcs.h"
 #include "servers/camera/camera_feed.h"
 
 #import <AVFoundation/AVFoundation.h>
+#import <ImageIO/ImageIO.h>
+#import <TargetConditionals.h>
+#import <math.h>
+
+#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
+#include "drivers/apple_embedded/display_server_apple_embedded.h"
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // MyCaptureSession - This is a little helper class so we can capture our frames
@@ -48,6 +56,14 @@
 
 	AVCaptureDeviceInput *input;
 	AVCaptureVideoDataOutput *output;
+#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
+	float last_rotation;
+	bool last_mirror;
+
+	- (void)_updateFeedTransform:(CMSampleBufferRef)p_sampleBuffer connection:(AVCaptureConnection *)p_connection;
+	- (bool)_extractExifOrientation:(CFDictionaryRef)p_attachments rotation:(float *)r_rotation mirror:(bool *)r_mirror;
+	- (float)_normalizeDegrees:(float)p_degrees;
+#endif
 }
 
 @end
@@ -62,6 +78,10 @@
 		height[0] = 0;
 		width[1] = 0;
 		height[1] = 0;
+#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
+		last_rotation = NAN;
+		last_mirror = false;
+#endif
 
 		[self beginConfiguration];
 
@@ -185,9 +205,181 @@
 		feed->set_ycbcr_images(img[0], img[1]);
 	}
 
+#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
+	if (@available(iOS 11.0, *)) {
+		[self _updateFeedTransform:sampleBuffer connection:connection];
+	}
+#endif
+
 	// and unlock
 	CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 }
+
+#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
+
+- (void)_updateFeedTransform:(CMSampleBufferRef)p_sampleBuffer connection:(AVCaptureConnection *)p_connection {
+	if (!p_connection) {
+		return;
+	}
+
+	DisplayServerAppleEmbedded *ds = DisplayServerAppleEmbedded::get_singleton();
+	if (p_connection.isVideoOrientationSupported && ds) {
+		DisplayServer::ScreenOrientation screen_orientation = ds->screen_get_orientation(DisplayServer::SCREEN_OF_MAIN_WINDOW);
+		AVCaptureVideoOrientation desired_orientation = AVCaptureVideoOrientationPortrait;
+		switch (screen_orientation) {
+			case DisplayServer::SCREEN_LANDSCAPE:
+				desired_orientation = AVCaptureVideoOrientationLandscapeRight;
+				break;
+			case DisplayServer::SCREEN_REVERSE_LANDSCAPE:
+				desired_orientation = AVCaptureVideoOrientationLandscapeLeft;
+				break;
+			case DisplayServer::SCREEN_REVERSE_PORTRAIT:
+				desired_orientation = AVCaptureVideoOrientationPortraitUpsideDown;
+				break;
+			case DisplayServer::SCREEN_SENSOR:
+			case DisplayServer::SCREEN_SENSOR_LANDSCAPE:
+			case DisplayServer::SCREEN_SENSOR_PORTRAIT:
+				desired_orientation = p_connection.videoOrientation;
+				break;
+			case DisplayServer::SCREEN_PORTRAIT:
+			default:
+				desired_orientation = AVCaptureVideoOrientationPortrait;
+				break;
+		}
+		if (p_connection.videoOrientation != desired_orientation) {
+			p_connection.videoOrientation = desired_orientation;
+		}
+	}
+
+	float rotation_degrees = 0.0f;
+	bool rotation_valid = false;
+	bool mirror = false;
+
+	CFDictionaryRef attachments = CMCopyDictionaryOfAttachments(nullptr, p_sampleBuffer, kCMAttachmentMode_ShouldPropagate);
+	if (attachments) {
+		rotation_valid = [self _extractExifOrientation:attachments rotation:&rotation_degrees mirror:&mirror];
+		CFRelease(attachments);
+	}
+
+	if (!rotation_valid) {
+		if (@available(iOS 13.0, *)) {
+			rotation_degrees = [self _normalizeDegrees:p_connection.videoRotationAngle];
+			rotation_valid = true;
+		} else {
+			switch (p_connection.videoOrientation) {
+				case AVCaptureVideoOrientationLandscapeRight:
+					rotation_degrees = 0.0f;
+					rotation_valid = true;
+					break;
+				case AVCaptureVideoOrientationLandscapeLeft:
+					rotation_degrees = 180.0f;
+					rotation_valid = true;
+					break;
+				case AVCaptureVideoOrientationPortraitUpsideDown:
+					rotation_degrees = 270.0f;
+					rotation_valid = true;
+					break;
+				case AVCaptureVideoOrientationPortrait:
+				default:
+					rotation_degrees = 90.0f;
+					rotation_valid = true;
+					break;
+			}
+		}
+	}
+
+	AVCaptureDevice *active_device = input ? input.device : nullptr;
+	if (p_connection.isVideoMirroringSupported) {
+		mirror = p_connection.videoMirrored;
+	} else if (active_device && active_device.position == AVCaptureDevicePositionFront) {
+		mirror = true;
+	}
+
+	if (!rotation_valid) {
+		return;
+	}
+
+	float rotation_radians = Math::deg_to_rad(rotation_degrees);
+	if (!Math::is_nan(last_rotation) && Math::is_equal_approx(rotation_radians, last_rotation) && mirror == last_mirror) {
+		return;
+	}
+
+	Transform2D current_transform = feed->get_transform();
+	Vector2 base_scale = current_transform.get_scale();
+	float scale_x = Math::abs(base_scale.x);
+	float scale_y = base_scale.y >= 0.0f ? Math::abs(base_scale.y) : -Math::abs(base_scale.y);
+	if (mirror) {
+		scale_x = -scale_x;
+	}
+
+	Transform2D updated_transform;
+	updated_transform.set_rotation(rotation_radians);
+	updated_transform.set_scale(Vector2(scale_x, scale_y));
+	updated_transform.set_origin(current_transform.get_origin());
+
+	feed->set_transform(updated_transform);
+	last_rotation = rotation_radians;
+	last_mirror = mirror;
+}
+
+- (bool)_extractExifOrientation:(CFDictionaryRef)p_attachments rotation:(float *)r_rotation mirror:(bool *)r_mirror {
+	CFNumberRef orientation_value = (CFNumberRef)CFDictionaryGetValue(p_attachments, kCGImagePropertyOrientation);
+	if (!orientation_value) {
+		return false;
+	}
+
+	int exif_orientation = 0;
+	if (!CFNumberGetValue(orientation_value, kCFNumberIntType, &exif_orientation)) {
+		return false;
+	}
+
+	switch (exif_orientation) {
+		case 1:
+			*r_rotation = 0.0f;
+			*r_mirror = false;
+			return true;
+		case 2:
+			*r_rotation = 0.0f;
+			*r_mirror = true;
+			return true;
+		case 3:
+			*r_rotation = 180.0f;
+			*r_mirror = false;
+			return true;
+		case 4:
+			*r_rotation = 180.0f;
+			*r_mirror = true;
+			return true;
+		case 5:
+			*r_rotation = 270.0f;
+			*r_mirror = true;
+			return true;
+		case 6:
+			*r_rotation = 90.0f;
+			*r_mirror = false;
+			return true;
+		case 7:
+			*r_rotation = 90.0f;
+			*r_mirror = true;
+			return true;
+		case 8:
+			*r_rotation = 270.0f;
+			*r_mirror = false;
+			return true;
+		default:
+			return false;
+	}
+}
+
+- (float)_normalizeDegrees:(float)p_degrees {
+	float normalized = fmodf(p_degrees, 360.0f);
+	if (normalized < 0.0f) {
+		normalized += 360.0f;
+	}
+	return normalized;
+}
+
+#endif
 
 @end
 
@@ -360,9 +552,16 @@ void CameraMacOS::update_feeds() {
 			newfeed.instantiate();
 			newfeed->set_device(device);
 
-			// assume display camera so inverse
-			Transform2D transform = Transform2D(-1.0, 0.0, 0.0, -1.0, 1.0, 1.0);
-			newfeed->set_transform(transform);
+#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
+			if (@available(iOS 11.0, *)) {
+				// Keep default transform (vertical flip) for dynamic orientation handling.
+			} else
+#endif
+			{
+				// assume display camera so inverse when running on macOS
+				Transform2D transform = Transform2D(-1.0, 0.0, 0.0, -1.0, 1.0, 1.0);
+				newfeed->set_transform(transform);
+			}
 
 			add_feed(newfeed);
 		};
