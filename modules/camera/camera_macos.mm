@@ -33,9 +33,18 @@
 
 #import "camera_macos.h"
 
+#if TARGET_OS_IPHONE
+// C function to call from view controller
+extern "C" void godot_camera_update_orientation_ios(int p_orientation);
+#endif
+
+#include "core/math/math_defs.h"
 #include "servers/camera/camera_feed.h"
 
 #import <AVFoundation/AVFoundation.h>
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // MyCaptureSession - This is a little helper class so we can capture our frames
@@ -48,7 +57,14 @@
 
 	AVCaptureDeviceInput *input;
 	AVCaptureVideoDataOutput *output;
+#if TARGET_OS_IPHONE
+	AVCaptureConnection *videoConnection;
+#endif
 }
+
+#if TARGET_OS_IPHONE
+- (void)updateVideoOrientation:(int)interfaceOrientation;
+#endif
 
 @end
 
@@ -91,6 +107,16 @@
 
 		[self commitConfiguration];
 
+#if TARGET_OS_IPHONE
+		// Get video connection and set initial orientation
+		videoConnection = [output connectionWithMediaType:AVMediaTypeVideo];
+		if (videoConnection && videoConnection.supportsVideoOrientation) {
+			// Get current interface orientation
+			UIInterfaceOrientation interfaceOrientation = [UIApplication sharedApplication].delegate.window.windowScene.interfaceOrientation;
+			[self updateVideoOrientation:(int)interfaceOrientation];
+		}
+#endif
+
 		// kick off our session..
 		[self startRunning];
 	};
@@ -120,6 +146,34 @@
 
 	[self commitConfiguration];
 }
+
+#if TARGET_OS_IPHONE
+- (void)updateVideoOrientation:(int)interfaceOrientation {
+	if (!videoConnection || !videoConnection.supportsVideoOrientation) {
+		return;
+	}
+
+	AVCaptureVideoOrientation videoOrientation;
+	switch (interfaceOrientation) {
+		case 1: // UIInterfaceOrientationPortrait
+			videoOrientation = AVCaptureVideoOrientationPortrait;
+			break;
+		case 2: // UIInterfaceOrientationPortraitUpsideDown
+			videoOrientation = AVCaptureVideoOrientationPortraitUpsideDown;
+			break;
+		case 3: // UIInterfaceOrientationLandscapeRight
+			videoOrientation = AVCaptureVideoOrientationLandscapeRight;
+			break;
+		case 4: // UIInterfaceOrientationLandscapeLeft
+			videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
+			break;
+		default:
+			return;
+	}
+
+	videoConnection.videoOrientation = videoOrientation;
+}
+#endif
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
 	// This gets called every time our camera has a new image for us to process.
@@ -210,6 +264,10 @@ public:
 
 	bool activate_feed() override;
 	void deactivate_feed() override;
+
+#if TARGET_OS_IPHONE
+	void update_video_orientation(int p_orientation);
+#endif
 };
 
 AVCaptureDevice *CameraFeedMacOS::get_device() const {
@@ -269,6 +327,14 @@ void CameraFeedMacOS::deactivate_feed() {
 	};
 }
 
+#if TARGET_OS_IPHONE
+void CameraFeedMacOS::update_video_orientation(int p_orientation) {
+	if (capture_session) {
+		[capture_session updateVideoOrientation:p_orientation];
+	}
+}
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 // MyDeviceNotifications - This is a little helper class gets notifications
 // when devices are connected/disconnected
@@ -307,6 +373,21 @@ MyDeviceNotifications *device_notifications = nil;
 
 //////////////////////////////////////////////////////////////////////////
 // CameraMacOS - Subclass for our camera server on macOS
+
+#if TARGET_OS_IPHONE
+void CameraMacOS::update_orientation(int p_orientation) {
+	// Store the orientation value (UIInterfaceOrientation)
+	current_orientation = p_orientation;
+
+	// Update all active feeds
+	for (int i = 0; i < feeds.size(); i++) {
+		Ref<CameraFeedMacOS> feed = (Ref<CameraFeedMacOS>)feeds[i];
+		if (feed.is_valid() && feed->is_active()) {
+			feed->update_video_orientation(p_orientation);
+		}
+	}
+}
+#endif
 
 void CameraMacOS::update_feeds() {
 	NSArray<AVCaptureDevice *> *devices = nullptr;
@@ -360,10 +441,6 @@ void CameraMacOS::update_feeds() {
 			newfeed.instantiate();
 			newfeed->set_device(device);
 
-			// assume display camera so inverse
-			Transform2D transform = Transform2D(-1.0, 0.0, 0.0, -1.0, 1.0, 1.0);
-			newfeed->set_transform(transform);
-
 			add_feed(newfeed);
 		};
 	};
@@ -387,3 +464,13 @@ void CameraMacOS::set_monitoring_feeds(bool p_monitoring_feeds) {
 		device_notifications = nil;
 	}
 }
+
+#if TARGET_OS_IPHONE
+// C function implementation for view controller
+void godot_camera_update_orientation_ios(int p_orientation) {
+	CameraMacOS *camera_server = (CameraMacOS *)CameraServer::get_singleton();
+	if (camera_server) {
+		camera_server->update_orientation(p_orientation);
+	}
+}
+#endif
