@@ -62,12 +62,14 @@
 	float base_scale_x;
 	float base_scale_y;
 	bool base_scale_initialized;
-
-	- (void)_updateFeedTransform:(CMSampleBufferRef)p_sampleBuffer connection:(AVCaptureConnection *)p_connection;
-	- (bool)_extractExifOrientation:(CFDictionaryRef)p_attachments rotation:(float *)r_rotation mirror:(bool *)r_mirror;
-	- (float)_normalizeDegrees:(float)p_degrees;
 #endif
 }
+
+#if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
+- (void)_updateFeedTransform:(CMSampleBufferRef)p_sampleBuffer connection:(AVCaptureConnection *)p_connection;
+- (bool)_extractExifOrientation:(CFDictionaryRef)p_attachments rotation:(float *)r_rotation mirror:(bool *)r_mirror;
+- (float)_normalizeDegrees:(float)p_degrees;
+#endif
 
 @end
 
@@ -268,8 +270,8 @@
 	}
 
 	if (!rotation_valid) {
-		if (@available(iOS 13.0, *)) {
-			if (p_connection.isVideoRotationAngleSupported) {
+		if (@available(iOS 17.0, *)) {
+			if ([p_connection respondsToSelector:@selector(videoRotationAngle)]) {
 				rotation_degrees = [self _normalizeDegrees:p_connection.videoRotationAngle];
 				rotation_valid = true;
 			}
