@@ -59,6 +59,9 @@
 #if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
 	float last_rotation;
 	bool last_mirror;
+	float base_scale_x;
+	float base_scale_y;
+	bool base_scale_initialized;
 
 	- (void)_updateFeedTransform:(CMSampleBufferRef)p_sampleBuffer connection:(AVCaptureConnection *)p_connection;
 	- (bool)_extractExifOrientation:(CFDictionaryRef)p_attachments rotation:(float *)r_rotation mirror:(bool *)r_mirror;
@@ -81,6 +84,9 @@
 #if TARGET_OS_IPHONE || TARGET_OS_MACCATALYST
 		last_rotation = NAN;
 		last_mirror = false;
+		base_scale_x = 0.0f;
+		base_scale_y = 0.0f;
+		base_scale_initialized = false;
 #endif
 
 		[self beginConfiguration];
@@ -308,16 +314,26 @@
 	}
 
 	Transform2D current_transform = feed->get_transform();
-	Vector2 base_scale = current_transform.get_scale();
-	float scale_x = Math::abs(base_scale.x);
-	float scale_y = base_scale.y >= 0.0f ? Math::abs(base_scale.y) : -Math::abs(base_scale.y);
+	if (!base_scale_initialized) {
+		Vector2 initial_scale = current_transform.get_scale();
+		base_scale_x = initial_scale.x;
+		base_scale_y = initial_scale.y;
+		base_scale_initialized = true;
+	} else {
+		Vector2 current_scale = current_transform.get_scale();
+		float scale_x_magnitude = Math::abs(current_scale.x);
+		float scale_y_magnitude = Math::abs(current_scale.y);
+		base_scale_x = (base_scale_x < 0.0f) ? -scale_x_magnitude : scale_x_magnitude;
+		base_scale_y = (base_scale_y < 0.0f) ? -scale_y_magnitude : scale_y_magnitude;
+	}
+	Vector2 final_scale(base_scale_x, base_scale_y);
 	if (mirror) {
-		scale_x = -scale_x;
+		final_scale.x = -final_scale.x;
 	}
 
 	Transform2D updated_transform;
 	updated_transform.set_rotation(rotation_radians);
-	updated_transform.set_scale(Vector2(scale_x, scale_y));
+	updated_transform.set_scale(final_scale);
 	updated_transform.set_origin(current_transform.get_origin());
 
 	feed->set_transform(updated_transform);
