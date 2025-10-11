@@ -263,9 +263,12 @@
 
 	if (!rotation_valid) {
 		if (@available(iOS 13.0, *)) {
-			rotation_degrees = [self _normalizeDegrees:p_connection.videoRotationAngle];
-			rotation_valid = true;
-		} else {
+			if (p_connection.isVideoRotationAngleSupported) {
+				rotation_degrees = [self _normalizeDegrees:p_connection.videoRotationAngle];
+				rotation_valid = true;
+			}
+		}
+		if (!rotation_valid) {
 			switch (p_connection.videoOrientation) {
 				case AVCaptureVideoOrientationLandscapeRight:
 					rotation_degrees = 0.0f;
