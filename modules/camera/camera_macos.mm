@@ -210,6 +210,10 @@ public:
 
 	bool activate_feed() override;
 	void deactivate_feed() override;
+
+#if TARGET_OS_IPHONE
+	void update_transform();
+#endif
 };
 
 AVCaptureDevice *CameraFeedMacOS::get_device() const {
@@ -269,6 +273,42 @@ void CameraFeedMacOS::deactivate_feed() {
 	};
 }
 
+#if TARGET_OS_IPHONE
+void CameraFeedMacOS::update_transform() {
+	CameraMacOS *server = (CameraMacOS *)CameraServer::get_singleton();
+	if (!server) {
+		return;
+	}
+
+	int orientation = server->get_current_orientation();
+
+	// Calculate rotation angle based on UIDeviceOrientation
+	real_t rotation = 0.0;
+	switch (orientation) {
+		case 1: // UIDeviceOrientationPortrait
+			rotation = 0.0;
+			break;
+		case 2: // UIDeviceOrientationPortraitUpsideDown
+			rotation = Math_PI;
+			break;
+		case 3: // UIDeviceOrientationLandscapeLeft
+			rotation = Math_PI / 2.0;
+			break;
+		case 4: // UIDeviceOrientationLandscapeRight
+			rotation = -Math_PI / 2.0;
+			break;
+		default:
+			// Unknown, FaceUp, FaceDown - keep current rotation
+			return;
+	}
+
+	// Get current transform (which includes mirroring for front camera)
+	Transform2D transform = get_transform();
+	transform.set_rotation(rotation);
+	set_transform(transform);
+}
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 // MyDeviceNotifications - This is a little helper class gets notifications
 // when devices are connected/disconnected
@@ -306,7 +346,62 @@ void CameraFeedMacOS::deactivate_feed() {
 MyDeviceNotifications *device_notifications = nil;
 
 //////////////////////////////////////////////////////////////////////////
+// MyOrientationNotifications - Helper class for iOS device orientation changes
+
+#if TARGET_OS_IPHONE
+@interface MyOrientationNotifications : NSObject {
+	CameraMacOS *camera_server;
+}
+
+@end
+
+@implementation MyOrientationNotifications
+
+- (void)orientation_changed:(NSNotification *)notification {
+	camera_server->update_orientation();
+}
+
+- (id)initForServer:(CameraMacOS *)p_server {
+	if (self = [super init]) {
+		camera_server = p_server;
+
+		[[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(orientation_changed:) name:UIDeviceOrientationDidChangeNotification object:nil];
+	};
+	return self;
+}
+
+- (void)dealloc {
+	// remove notifications
+	[[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
+	[[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
+}
+
+@end
+
+MyOrientationNotifications *orientation_notifications = nil;
+#endif
+
+//////////////////////////////////////////////////////////////////////////
 // CameraMacOS - Subclass for our camera server on macOS
+
+#if TARGET_OS_IPHONE
+void CameraMacOS::update_orientation() {
+	// Get current device orientation
+	UIDeviceOrientation new_orientation = [[UIDevice currentDevice] orientation];
+
+	// Store the orientation value
+	current_orientation = (int)new_orientation;
+
+	// Update all active feeds
+	for (int i = 0; i < feeds.size(); i++) {
+		Ref<CameraFeedMacOS> feed = (Ref<CameraFeedMacOS>)feeds[i];
+		if (feed.is_valid() && feed->is_active()) {
+			feed->update_transform();
+		}
+	}
+}
+#endif
 
 void CameraMacOS::update_feeds() {
 	NSArray<AVCaptureDevice *> *devices = nullptr;
@@ -387,8 +482,21 @@ void CameraMacOS::set_monitoring_feeds(bool p_monitoring_feeds) {
 
 		// Get notified on feed changes.
 		device_notifications = [[MyDeviceNotifications alloc] initForServer:this];
+
+#if TARGET_OS_IPHONE
+		// Get current orientation and update feeds
+		update_orientation();
+
+		// Get notified on orientation changes.
+		orientation_notifications = [[MyOrientationNotifications alloc] initForServer:this];
+#endif
 	} else {
 		// Stop monitoring feed changes.
 		device_notifications = nil;
+
+#if TARGET_OS_IPHONE
+		// Stop monitoring orientation changes.
+		orientation_notifications = nil;
+#endif
 	}
 }
