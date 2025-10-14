@@ -490,9 +490,9 @@ void CameraFeedAndroid::deactivate_feed() {
 		session = nullptr;
 	}
 
-	if (request != nullptr) {
-		ACaptureRequest_free(request);
-		request = nullptr;
+	if (device != nullptr) {
+		ACameraDevice_close(device);
+		device = nullptr;
 	}
 
 	if (reader != nullptr) {
@@ -500,9 +500,9 @@ void CameraFeedAndroid::deactivate_feed() {
 		reader = nullptr;
 	}
 
-	if (device != nullptr) {
-		ACameraDevice_close(device);
-		device = nullptr;
+	if (request != nullptr) {
+		ACaptureRequest_free(request);
+		request = nullptr;
 	}
 }
 
