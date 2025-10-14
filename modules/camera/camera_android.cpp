@@ -316,6 +316,25 @@ void CameraFeedAndroid::compact_stride_inplace(uint8_t *data, size_t width, int 
 
 void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 	CameraFeedAndroid *feed = static_cast<CameraFeedAndroid *>(context);
+
+	if (!feed->is_active()) {
+		AImage *image = nullptr;
+		if (AImageReader_acquireNextImage(p_reader, &image) == AMEDIA_OK) {
+			AImage_delete(image);
+		}
+		return;
+	}
+
+	MutexLock lock(feed->callback_mutex);
+
+	if (!feed->is_active()) {
+		AImage *image = nullptr;
+		if (AImageReader_acquireNextImage(p_reader, &image) == AMEDIA_OK) {
+			AImage_delete(image);
+		}
+		return;
+	}
+
 	Vector<uint8_t> data_y = feed->data_y;
 	Vector<uint8_t> data_uv = feed->data_uv;
 	Ref<Image> image_y = feed->image_y;
@@ -490,19 +509,27 @@ void CameraFeedAndroid::deactivate_feed() {
 		session = nullptr;
 	}
 
-	if (device != nullptr) {
-		ACameraDevice_close(device);
-		device = nullptr;
-	}
-
 	if (reader != nullptr) {
-		AImageReader_delete(reader);
-		reader = nullptr;
+		AImageReader_setImageListener(reader, nullptr);
 	}
 
-	if (request != nullptr) {
-		ACaptureRequest_free(request);
-		request = nullptr;
+	{
+		MutexLock lock(callback_mutex);
+
+		if (device != nullptr) {
+			ACameraDevice_close(device);
+			device = nullptr;
+		}
+
+		if (reader != nullptr) {
+			AImageReader_delete(reader);
+			reader = nullptr;
+		}
+
+		if (request != nullptr) {
+			ACaptureRequest_free(request);
+			request = nullptr;
+		}
 	}
 }
 

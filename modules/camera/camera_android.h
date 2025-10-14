@@ -32,6 +32,7 @@
 
 #include <cstddef>
 
+#include "core/os/mutex.h"
 #include "servers/camera/camera_feed.h"
 #include "servers/camera/camera_server.h"
 
@@ -79,6 +80,8 @@ private:
 	AImageReader *reader = nullptr;
 	ACameraCaptureSession *session = nullptr;
 	ACaptureRequest *request = nullptr;
+
+	Mutex callback_mutex;
 
 	void _add_formats();
 	void _set_rotation();
