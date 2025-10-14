@@ -104,9 +104,9 @@ void CameraFeedAndroid::_set_rotation() {
 
 	RotationResult result = calculate_rotation(params);
 
+	float imageRotation = 0.0f;
 	if (result.isValid) {
-		float imageRotation = static_cast<float>(result.rotationAngle);
-		transform.set_rotation(real_t(Math::deg_to_rad(imageRotation)));
+		imageRotation = static_cast<float>(result.rotationAngle);
 	} else {
 		// Fallback.
 		int display_rotation = DisplayServerAndroid::get_singleton()->get_display_rotation();
@@ -122,9 +122,16 @@ void CameraFeedAndroid::_set_rotation() {
 		}
 
 		int sign = position == CameraFeed::FEED_FRONT ? 1 : -1;
-		float imageRotation = (orientation - display_rotation * sign + 360) % 360;
-		transform.set_rotation(real_t(Math::deg_to_rad(imageRotation)));
+		imageRotation = (orientation - display_rotation * sign + 360) % 360;
 	}
+
+	// Apply horizontal mirroring before rotation when needed.
+	Vector2 scale = (result.shouldMirror || position == CameraFeed::FEED_FRONT) ? Vector2(-1.0, 1.0) : Vector2(1.0, 1.0);
+
+	// Rebuild transform with scale applied before rotation.
+	transform = Transform2D();
+	transform = transform.scaled(scale);
+	transform = transform.rotated(Math::deg_to_rad(imageRotation));
 }
 
 void CameraFeedAndroid::_add_formats() {
