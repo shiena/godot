@@ -51,7 +51,6 @@ struct CameraRotationParams {
 	int sensorOrientation;
 	CameraFacing cameraFacing;
 	int displayRotation;
-	bool needsMirror;
 };
 
 struct RotationResult {
@@ -83,8 +82,12 @@ private:
 
 	Mutex callback_mutex;
 
+	// Lifecycle state tracking
+	bool was_active_before_pause = false;
+
 	void _add_formats();
 	void _set_rotation();
+	void refresh_camera_metadata();
 
 	static void compact_stride_inplace(uint8_t *data, size_t width, int height, size_t stride);
 
@@ -100,12 +103,19 @@ private:
 	static void onSessionClosed(void *context, ACameraCaptureSession *session);
 
 protected:
+	static void _bind_methods();
+
 public:
 	bool activate_feed() override;
 	void deactivate_feed() override;
 	bool set_format(int p_index, const Dictionary &p_parameters) override;
 	Array get_formats() const override;
 	FeedFormat get_format() const override;
+
+	// Lifecycle management methods
+	void handle_pause();
+	void handle_resume();
+	void handle_rotation_change();
 
 	CameraFeedAndroid(ACameraManager *manager, ACameraMetadata *metadata, const char *id,
 			CameraFeed::FeedPosition position, int32_t orientation);
@@ -121,8 +131,16 @@ private:
 	void update_feeds();
 	void remove_all_feeds();
 
+protected:
+	static void _bind_methods();
+
 public:
 	void set_monitoring_feeds(bool p_monitoring_feeds) override;
+
+	// Lifecycle management methods for all camera feeds
+	void handle_pause();
+	void handle_resume();
+	void handle_rotation_change();
 
 	~CameraAndroid();
 };

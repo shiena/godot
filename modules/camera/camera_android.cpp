@@ -95,12 +95,58 @@ CameraFeedAndroid::~CameraFeedAndroid() {
 	}
 }
 
+void CameraFeedAndroid::refresh_camera_metadata() {
+	if (!manager) {
+		ERR_PRINT(vformat("Camera %s: Cannot refresh metadata, manager is null", camera_id));
+		return;
+	}
+
+	// Free existing metadata
+	if (metadata != nullptr) {
+		ACameraMetadata_free(metadata);
+		metadata = nullptr;
+	}
+
+	// Get fresh metadata from camera manager
+	camera_status_t status = ACameraManager_getCameraCharacteristics(manager, camera_id.utf8().get_data(), &metadata);
+
+	if (status != ACAMERA_OK || metadata == nullptr) {
+		ERR_PRINT(vformat("Camera %s: Failed to refresh metadata (status: %d)", camera_id, status));
+		return;
+	}
+
+	// Re-fetch sensor orientation
+	ACameraMetadata_const_entry orientation_entry;
+	status = ACameraMetadata_getConstEntry(metadata, ACAMERA_SENSOR_ORIENTATION, &orientation_entry);
+	if (status == ACAMERA_OK) {
+		orientation = orientation_entry.data.i32[0];
+		print_verbose(vformat("Camera %s: Orientation updated to %d", camera_id, orientation));
+	} else {
+		ERR_PRINT(vformat("Camera %s: Failed to get sensor orientation after refresh (status: %d)", camera_id, status));
+	}
+
+	// Re-fetch available formats
+	formats.clear();
+	_add_formats();
+
+	print_verbose(vformat("Camera %s: Metadata refreshed successfully", camera_id));
+}
+
 void CameraFeedAndroid::_set_rotation() {
+	// Safety check: ensure metadata is valid
+	if (!metadata) {
+		print_verbose(vformat("Camera %s: metadata is null in _set_rotation, attempting refresh", camera_id));
+		refresh_camera_metadata();
+		if (!metadata) {
+			ERR_PRINT(vformat("Camera %s: Cannot update rotation, metadata unavailable after refresh", camera_id));
+			return;
+		}
+	}
+
 	CameraRotationParams params;
 	params.sensorOrientation = orientation;
 	params.cameraFacing = (position == CameraFeed::FEED_FRONT) ? CameraFacing::FRONT : CameraFacing::BACK;
 	params.displayRotation = get_app_orientation();
-	params.needsMirror = false;
 
 	RotationResult result = calculate_rotation(params);
 
@@ -126,7 +172,7 @@ void CameraFeedAndroid::_set_rotation() {
 	}
 
 	// Apply horizontal mirroring before rotation when needed.
-	Vector2 scale = (result.shouldMirror || position == CameraFeed::FEED_FRONT) ? Vector2(-1.0, 1.0) : Vector2(1.0, 1.0);
+	Vector2 scale = result.shouldMirror ? Vector2(-1.0, 1.0) : Vector2(1.0, 1.0);
 
 	// Rebuild transform with scale applied before rotation.
 	transform = Transform2D();
@@ -335,14 +381,6 @@ void CameraFeedAndroid::compact_stride_inplace(uint8_t *data, size_t width, int 
 void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 	CameraFeedAndroid *feed = static_cast<CameraFeedAndroid *>(context);
 
-	if (!feed->is_active()) {
-		AImage *image = nullptr;
-		if (AImageReader_acquireNextImage(p_reader, &image) == AMEDIA_OK) {
-			AImage_delete(image);
-		}
-		return;
-	}
-
 	MutexLock lock(feed->callback_mutex);
 
 	if (!feed->is_active()) {
@@ -509,8 +547,22 @@ void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 			return;
 	}
 
-	// Rotation
-	feed->_set_rotation();
+	// Rotation - only update if formats are still valid
+	// During screen rotation, metadata may become invalid and formats may be empty
+	if (!feed->formats.is_empty()) {
+		// Check if metadata is still valid before setting rotation
+		if (feed->metadata != nullptr) {
+			feed->_set_rotation();
+		} else {
+			// Metadata has been invalidated (possibly due to configuration change)
+			// Attempt to refresh it
+			print_verbose(vformat("Camera %s: metadata invalidated in onImage, attempting refresh", feed->camera_id));
+			feed->refresh_camera_metadata();
+			if (feed->metadata != nullptr && !feed->formats.is_empty()) {
+				feed->_set_rotation();
+			}
+		}
+	}
 
 	// Release image
 	AImage_delete(image);
@@ -659,6 +711,77 @@ void CameraAndroid::set_monitoring_feeds(bool p_monitoring_feeds) {
 	}
 }
 
+void CameraFeedAndroid::handle_pause() {
+	if (is_active()) {
+		was_active_before_pause = true;
+		print_verbose(vformat("Camera %s: Pausing (was active)", camera_id));
+		deactivate_feed();
+	} else {
+		was_active_before_pause = false;
+	}
+}
+
+void CameraFeedAndroid::handle_resume() {
+	if (was_active_before_pause) {
+		print_verbose(vformat("Camera %s: Resuming", camera_id));
+		activate_feed();
+		was_active_before_pause = false;
+	}
+}
+
+void CameraFeedAndroid::handle_rotation_change() {
+	if (!is_active()) {
+		return;
+	}
+
+	print_verbose(vformat("Camera %s: Handling rotation change", camera_id));
+
+	// Refresh metadata to get updated orientation and formats
+	refresh_camera_metadata();
+
+	// Recalculate rotation transform
+	_set_rotation();
+}
+
+void CameraFeedAndroid::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("handle_pause"), &CameraFeedAndroid::handle_pause);
+	ClassDB::bind_method(D_METHOD("handle_resume"), &CameraFeedAndroid::handle_resume);
+	ClassDB::bind_method(D_METHOD("handle_rotation_change"), &CameraFeedAndroid::handle_rotation_change);
+}
+
+void CameraAndroid::handle_pause() {
+	for (int i = 0; i < feeds.size(); i++) {
+		Ref<CameraFeedAndroid> feed = feeds[i];
+		if (feed.is_valid()) {
+			feed->handle_pause();
+		}
+	}
+}
+
+void CameraAndroid::handle_resume() {
+	for (int i = 0; i < feeds.size(); i++) {
+		Ref<CameraFeedAndroid> feed = feeds[i];
+		if (feed.is_valid()) {
+			feed->handle_resume();
+		}
+	}
+}
+
+void CameraAndroid::handle_rotation_change() {
+	for (int i = 0; i < feeds.size(); i++) {
+		Ref<CameraFeedAndroid> feed = feeds[i];
+		if (feed.is_valid()) {
+			feed->handle_rotation_change();
+		}
+	}
+}
+
+void CameraAndroid::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("handle_pause"), &CameraAndroid::handle_pause);
+	ClassDB::bind_method(D_METHOD("handle_resume"), &CameraAndroid::handle_resume);
+	ClassDB::bind_method(D_METHOD("handle_rotation_change"), &CameraAndroid::handle_rotation_change);
+}
+
 CameraAndroid::~CameraAndroid() {
 	remove_all_feeds();
 }
@@ -678,7 +801,7 @@ RotationResult CameraFeedAndroid::calculate_rotation(const CameraRotationParams 
 	int rotationAngle = params.sensorOrientation - params.displayRotation;
 
 	result.rotationAngle = normalize_angle(rotationAngle);
-	result.shouldMirror = params.needsMirror || (params.cameraFacing == CameraFacing::FRONT);
+	result.shouldMirror = (params.cameraFacing == CameraFacing::FRONT);
 	result.isValid = true;
 
 	return result;
