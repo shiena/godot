@@ -165,6 +165,12 @@ void CameraFeedAndroid::_add_formats() {
 
 bool CameraFeedAndroid::activate_feed() {
 	ERR_FAIL_COND_V_MSG(selected_format == -1, false, "CameraFeed format needs to be set before activating.");
+
+	// Safety checks: ensure formats array is valid
+	ERR_FAIL_COND_V_MSG(formats.is_empty(), false, "No camera formats available.");
+	ERR_FAIL_INDEX_V_MSG(selected_format, formats.size(), false,
+			vformat("Selected format index %d is out of bounds (formats size: %d)", selected_format, formats.size()));
+
 	if (is_active()) {
 		deactivate_feed();
 	};
@@ -300,7 +306,12 @@ Array CameraFeedAndroid::get_formats() const {
 
 CameraFeed::FeedFormat CameraFeedAndroid::get_format() const {
 	CameraFeed::FeedFormat feed_format = {};
-	return selected_format == -1 ? feed_format : formats[selected_format];
+	// Safety check: ensure selected_format is valid
+	if (selected_format < 0 || selected_format >= formats.size()) {
+		ERR_PRINT(vformat("Invalid format index: %d (formats size: %d)", selected_format, formats.size()));
+		return feed_format;
+	}
+	return formats[selected_format];
 }
 
 // In-place stride compaction (handles 16-byte alignment seen)
@@ -357,6 +368,14 @@ void CameraFeedAndroid::onImage(void *context, AImageReader *p_reader) {
 	int len = 0;
 	int32_t pixel_stride, row_stride;
 	FeedFormat format = feed->get_format();
+
+	// Safety check: ensure format is valid
+	if (format.width == 0 || format.height == 0) {
+		ERR_PRINT("Invalid camera format (width or height is 0), skipping frame");
+		AImage_delete(image);
+		return;
+	}
+
 	int width = format.width;
 	int height = format.height;
 	switch (format.pixel_format) {
