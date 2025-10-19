@@ -102,9 +102,6 @@ private:
 	static void onSessionActive(void *context, ACameraCaptureSession *session);
 	static void onSessionClosed(void *context, ACameraCaptureSession *session);
 
-protected:
-	static void _bind_methods();
-
 public:
 	bool activate_feed() override;
 	void deactivate_feed() override;
@@ -130,9 +127,6 @@ private:
 
 	void update_feeds();
 	void remove_all_feeds();
-
-protected:
-	static void _bind_methods();
 
 public:
 	void set_monitoring_feeds(bool p_monitoring_feeds) override;

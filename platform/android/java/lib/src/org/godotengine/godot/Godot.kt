@@ -688,6 +688,8 @@ class Godot private constructor(val context: Context) {
 		for (plugin in pluginRegistry.allPlugins) {
 			plugin.onMainResume()
 		}
+
+		GodotLib.onCameraResume()
 	}
 
 	private fun registerSensorsIfNeeded() {
@@ -715,6 +717,8 @@ class Godot private constructor(val context: Context) {
 		if (host != primaryHost) {
 			return
 		}
+
+		GodotLib.onCameraPause()
 
 		renderView?.onActivityPaused()
 		mSensorManager?.unregisterListener(godotInputHandler)
@@ -757,6 +761,8 @@ class Godot private constructor(val context: Context) {
 			darkMode = newDarkMode
 			GodotLib.onNightModeChanged()
 		}
+
+		GodotLib.onCameraRotationChange()
 	}
 
 	/**

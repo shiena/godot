@@ -171,12 +171,8 @@ void CameraFeedAndroid::_set_rotation() {
 		imageRotation = (orientation - display_rotation * sign + 360) % 360;
 	}
 
-	// Apply horizontal mirroring before rotation when needed.
-	Vector2 scale = result.shouldMirror ? Vector2(-1.0, 1.0) : Vector2(1.0, 1.0);
-
-	// Rebuild transform with scale applied before rotation.
+	// Apply rotation only. Mirroring should be handled by the application.
 	transform = Transform2D();
-	transform = transform.scaled(scale);
 	transform = transform.rotated(Math::deg_to_rad(imageRotation));
 }
 
@@ -743,12 +739,6 @@ void CameraFeedAndroid::handle_rotation_change() {
 	_set_rotation();
 }
 
-void CameraFeedAndroid::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("handle_pause"), &CameraFeedAndroid::handle_pause);
-	ClassDB::bind_method(D_METHOD("handle_resume"), &CameraFeedAndroid::handle_resume);
-	ClassDB::bind_method(D_METHOD("handle_rotation_change"), &CameraFeedAndroid::handle_rotation_change);
-}
-
 void CameraAndroid::handle_pause() {
 	for (int i = 0; i < feeds.size(); i++) {
 		Ref<CameraFeedAndroid> feed = feeds[i];
@@ -774,12 +764,6 @@ void CameraAndroid::handle_rotation_change() {
 			feed->handle_rotation_change();
 		}
 	}
-}
-
-void CameraAndroid::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("handle_pause"), &CameraAndroid::handle_pause);
-	ClassDB::bind_method(D_METHOD("handle_resume"), &CameraAndroid::handle_resume);
-	ClassDB::bind_method(D_METHOD("handle_rotation_change"), &CameraAndroid::handle_rotation_change);
 }
 
 CameraAndroid::~CameraAndroid() {

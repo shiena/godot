@@ -52,6 +52,11 @@
 #include "main/main.h"
 #include "servers/rendering/rendering_server.h"
 
+#ifdef CAMERA_ENABLED
+#include "modules/camera/camera_android.h"
+#include "servers/camera/camera_server.h"
+#endif // CAMERA_ENABLED
+
 #ifndef XR_DISABLED
 #include "servers/xr/xr_server.h"
 #endif // XR_DISABLED
@@ -606,6 +611,54 @@ JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onRendererPaused(JNIE
 	if (os_android->get_main_loop()) {
 		os_android->get_main_loop()->notification(MainLoop::NOTIFICATION_APPLICATION_PAUSED);
 	}
+}
+
+JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onCameraPause(JNIEnv *env, jclass clazz) {
+#ifdef CAMERA_ENABLED
+	if (step.get() <= STEP_SETUP) {
+		return;
+	}
+
+	CameraServer *camera_server = CameraServer::get_singleton();
+	if (camera_server) {
+		CameraAndroid *camera_android = Object::cast_to<CameraAndroid>(camera_server);
+		if (camera_android) {
+			camera_android->handle_pause();
+		}
+	}
+#endif // CAMERA_ENABLED
+}
+
+JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onCameraResume(JNIEnv *env, jclass clazz) {
+#ifdef CAMERA_ENABLED
+	if (step.get() <= STEP_SETUP) {
+		return;
+	}
+
+	CameraServer *camera_server = CameraServer::get_singleton();
+	if (camera_server) {
+		CameraAndroid *camera_android = Object::cast_to<CameraAndroid>(camera_server);
+		if (camera_android) {
+			camera_android->handle_resume();
+		}
+	}
+#endif // CAMERA_ENABLED
+}
+
+JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onCameraRotationChange(JNIEnv *env, jclass clazz) {
+#ifdef CAMERA_ENABLED
+	if (step.get() <= STEP_SETUP) {
+		return;
+	}
+
+	CameraServer *camera_server = CameraServer::get_singleton();
+	if (camera_server) {
+		CameraAndroid *camera_android = Object::cast_to<CameraAndroid>(camera_server);
+		if (camera_android) {
+			camera_android->handle_rotation_change();
+		}
+	}
+#endif // CAMERA_ENABLED
 }
 
 JNIEXPORT jboolean JNICALL Java_org_godotengine_godot_GodotLib_shouldDispatchInputToRenderThread(JNIEnv *env, jclass clazz) {
