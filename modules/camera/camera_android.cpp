@@ -137,24 +137,41 @@ void CameraFeedAndroid::_set_rotation() {
 	if (!metadata) {
 		print_verbose(vformat("Camera %s: metadata is null in _set_rotation, attempting refresh", camera_id));
 		refresh_camera_metadata();
-		if (!metadata) {
-			ERR_PRINT(vformat("Camera %s: Cannot update rotation, metadata unavailable after refresh", camera_id));
-			return;
-		}
 	}
 
-	CameraRotationParams params;
-	params.sensorOrientation = orientation;
-	params.cameraFacing = (position == CameraFeed::FEED_FRONT) ? CameraFacing::FRONT : CameraFacing::BACK;
-	params.displayRotation = get_app_orientation();
-
-	RotationResult result = calculate_rotation(params);
-
 	float imageRotation = 0.0f;
-	if (result.isValid) {
-		imageRotation = static_cast<float>(result.rotationAngle);
+
+	// If we have valid metadata, try the standard rotation calculation
+	if (metadata) {
+		CameraRotationParams params;
+		params.sensorOrientation = orientation;
+		params.cameraFacing = (position == CameraFeed::FEED_FRONT) ? CameraFacing::FRONT : CameraFacing::BACK;
+		params.displayRotation = get_app_orientation();
+
+		RotationResult result = calculate_rotation(params);
+
+		if (result.isValid) {
+			imageRotation = static_cast<float>(result.rotationAngle);
+		} else {
+			// Fallback if calculation fails
+			int display_rotation = DisplayServerAndroid::get_singleton()->get_display_rotation();
+			switch (display_rotation) {
+				case 90:
+					display_rotation = 270;
+					break;
+				case 270:
+					display_rotation = 90;
+					break;
+				default:
+					break;
+			}
+
+			int sign = position == CameraFeed::FEED_FRONT ? 1 : -1;
+			imageRotation = (orientation - display_rotation * sign + 360) % 360;
+		}
 	} else {
-		// Fallback.
+		// Fallback if metadata is unavailable after refresh
+		ERR_PRINT(vformat("Camera %s: Cannot update rotation, metadata unavailable after refresh, using fallback", camera_id));
 		int display_rotation = DisplayServerAndroid::get_singleton()->get_display_rotation();
 		switch (display_rotation) {
 			case 90:
@@ -206,12 +223,10 @@ void CameraFeedAndroid::_add_formats() {
 }
 
 bool CameraFeedAndroid::activate_feed() {
-	ERR_FAIL_COND_V_MSG(selected_format == -1, false, "CameraFeed format needs to be set before activating.");
-
 	// Safety checks: ensure formats array is valid
 	ERR_FAIL_COND_V_MSG(formats.is_empty(), false, "No camera formats available.");
 	ERR_FAIL_INDEX_V_MSG(selected_format, formats.size(), false,
-			vformat("Selected format index %d is out of bounds (formats size: %d)", selected_format, formats.size()));
+			vformat("CameraFeed format needs to be set before activating. Selected format index: %d (formats size: %d)", selected_format, formats.size()));
 
 	if (is_active()) {
 		deactivate_feed();
@@ -348,11 +363,8 @@ Array CameraFeedAndroid::get_formats() const {
 
 CameraFeed::FeedFormat CameraFeedAndroid::get_format() const {
 	CameraFeed::FeedFormat feed_format = {};
-	// Safety check: ensure selected_format is valid
-	if (selected_format < 0 || selected_format >= formats.size()) {
-		ERR_PRINT(vformat("Invalid format index: %d (formats size: %d)", selected_format, formats.size()));
-		return feed_format;
-	}
+	ERR_FAIL_INDEX_V_MSG(selected_format, formats.size(), feed_format,
+			vformat("Invalid format index: %d (formats size: %d)", selected_format, formats.size()));
 	return formats[selected_format];
 }
 

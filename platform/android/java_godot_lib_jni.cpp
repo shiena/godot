@@ -601,40 +601,9 @@ JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onRendererResumed(JNI
 	if (os_android->get_main_loop()) {
 		os_android->get_main_loop()->notification(MainLoop::NOTIFICATION_APPLICATION_RESUMED);
 	}
-}
 
-JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onRendererPaused(JNIEnv *env, jclass clazz) {
-	if (step.get() <= STEP_SETUP) {
-		return;
-	}
-
-	if (os_android->get_main_loop()) {
-		os_android->get_main_loop()->notification(MainLoop::NOTIFICATION_APPLICATION_PAUSED);
-	}
-}
-
-JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onCameraPause(JNIEnv *env, jclass clazz) {
 #ifdef CAMERA_ENABLED
-	if (step.get() <= STEP_SETUP) {
-		return;
-	}
-
-	CameraServer *camera_server = CameraServer::get_singleton();
-	if (camera_server) {
-		CameraAndroid *camera_android = Object::cast_to<CameraAndroid>(camera_server);
-		if (camera_android) {
-			camera_android->handle_pause();
-		}
-	}
-#endif // CAMERA_ENABLED
-}
-
-JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onCameraResume(JNIEnv *env, jclass clazz) {
-#ifdef CAMERA_ENABLED
-	if (step.get() <= STEP_SETUP) {
-		return;
-	}
-
+	// Resume camera feeds that were active before pause
 	CameraServer *camera_server = CameraServer::get_singleton();
 	if (camera_server) {
 		CameraAndroid *camera_android = Object::cast_to<CameraAndroid>(camera_server);
@@ -645,7 +614,29 @@ JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onCameraResume(JNIEnv
 #endif // CAMERA_ENABLED
 }
 
-JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onCameraRotationChange(JNIEnv *env, jclass clazz) {
+JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onRendererPaused(JNIEnv *env, jclass clazz) {
+	if (step.get() <= STEP_SETUP) {
+		return;
+	}
+
+#ifdef CAMERA_ENABLED
+	// Pause active camera feeds to release resources
+	CameraServer *camera_server = CameraServer::get_singleton();
+	if (camera_server) {
+		CameraAndroid *camera_android = Object::cast_to<CameraAndroid>(camera_server);
+		if (camera_android) {
+			camera_android->handle_pause();
+		}
+	}
+#endif // CAMERA_ENABLED
+
+	if (os_android->get_main_loop()) {
+		os_android->get_main_loop()->notification(MainLoop::NOTIFICATION_APPLICATION_PAUSED);
+	}
+}
+
+// Called on the UI thread from Godot.kt when screen orientation changes
+JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_onScreenRotationChange(JNIEnv *env, jclass clazz) {
 #ifdef CAMERA_ENABLED
 	if (step.get() <= STEP_SETUP) {
 		return;

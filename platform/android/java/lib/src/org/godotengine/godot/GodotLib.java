@@ -296,20 +296,9 @@ public class GodotLib {
 	public static native void onRendererPaused();
 
 	/**
-	 * Invoked when the app is paused to release camera resources.
+	 * Invoked when the screen orientation changes.
 	 */
-	public static native void onCameraPause();
-
-	/**
-	 * Invoked when the app is resumed to restore camera resources.
-	 */
-	public static native void onCameraResume();
-
-	/**
-	 * Invoked when the screen orientation changes to update camera metadata and rotation.
-	 * This ensures the camera feed displays correctly after device rotation.
-	 */
-	public static native void onCameraRotationChange();
+	public static native void onScreenRotationChange();
 
 	/**
 	 * @return true if input must be dispatched from the render thread. If false, input is

@@ -688,8 +688,6 @@ class Godot private constructor(val context: Context) {
 		for (plugin in pluginRegistry.allPlugins) {
 			plugin.onMainResume()
 		}
-
-		GodotLib.onCameraResume()
 	}
 
 	private fun registerSensorsIfNeeded() {
@@ -717,8 +715,6 @@ class Godot private constructor(val context: Context) {
 		if (host != primaryHost) {
 			return
 		}
-
-		GodotLib.onCameraPause()
 
 		renderView?.onActivityPaused()
 		mSensorManager?.unregisterListener(godotInputHandler)
@@ -750,6 +746,8 @@ class Godot private constructor(val context: Context) {
 		this.primaryHost = null
 	}
 
+	private var currentOrientation = -1
+
 	/**
 	 * Configuration change callback
 	*/
@@ -762,7 +760,12 @@ class Godot private constructor(val context: Context) {
 			GodotLib.onNightModeChanged()
 		}
 
-		GodotLib.onCameraRotationChange()
+		// Only notify screen rotation change if orientation actually changed
+		val newOrientation = newConfig.orientation
+		if (currentOrientation != -1 && currentOrientation != newOrientation) {
+			GodotLib.onScreenRotationChange()
+		}
+		currentOrientation = newOrientation
 	}
 
 	/**
