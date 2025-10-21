@@ -33,9 +33,13 @@
 
 #import "camera_macos.h"
 
+#include "core/math/math_defs.h"
 #include "servers/camera/camera_feed.h"
 
 #import <AVFoundation/AVFoundation.h>
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // MyCaptureSession - This is a little helper class so we can capture our frames
@@ -289,13 +293,13 @@ void CameraFeedMacOS::update_transform() {
 			rotation = 0.0;
 			break;
 		case 2: // UIDeviceOrientationPortraitUpsideDown
-			rotation = Math_PI;
+			rotation = Math::PI;
 			break;
 		case 3: // UIDeviceOrientationLandscapeLeft
-			rotation = Math_PI / 2.0;
+			rotation = Math::PI / 2.0;
 			break;
 		case 4: // UIDeviceOrientationLandscapeRight
-			rotation = -Math_PI / 2.0;
+			rotation = -Math::PI / 2.0;
 			break;
 		default:
 			// Unknown, FaceUp, FaceDown - keep current rotation
