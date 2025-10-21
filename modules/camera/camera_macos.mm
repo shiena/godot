@@ -37,6 +37,49 @@
 
 #import <AVFoundation/AVFoundation.h>
 
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+
+// Helper function to get current interface orientation on iOS
+static AVCaptureVideoOrientation get_current_video_orientation() {
+	UIInterfaceOrientation interfaceOrientation = UIInterfaceOrientationPortrait;
+
+	if (@available(iOS 13.0, *)) {
+		// Get orientation from UIWindowScene
+		NSSet<UIScene *> *scenes = [[UIApplication sharedApplication] connectedScenes];
+		for (UIScene *scene in scenes) {
+			if ([scene isKindOfClass:[UIWindowScene class]]) {
+				UIWindowScene *windowScene = (UIWindowScene *)scene;
+				if (windowScene.activationState == UISceneActivationStateForegroundActive) {
+					interfaceOrientation = windowScene.interfaceOrientation;
+					break;
+				}
+			}
+		}
+	} else {
+		// Fallback for iOS 12 and earlier
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+		interfaceOrientation = [[UIApplication sharedApplication] statusBarOrientation];
+#pragma clang diagnostic pop
+	}
+
+	// Convert UIInterfaceOrientation to AVCaptureVideoOrientation
+	switch (interfaceOrientation) {
+		case UIInterfaceOrientationPortrait:
+			return AVCaptureVideoOrientationPortrait;
+		case UIInterfaceOrientationLandscapeLeft:
+			return AVCaptureVideoOrientationLandscapeLeft;
+		case UIInterfaceOrientationLandscapeRight:
+			return AVCaptureVideoOrientationLandscapeRight;
+		case UIInterfaceOrientationPortraitUpsideDown:
+			return AVCaptureVideoOrientationPortraitUpsideDown;
+		default:
+			return AVCaptureVideoOrientationPortrait;
+	}
+}
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 // MyCaptureSession - This is a little helper class so we can capture our frames
 
@@ -48,7 +91,13 @@
 
 	AVCaptureDeviceInput *input;
 	AVCaptureVideoDataOutput *output;
+	AVCaptureConnection *videoConnection;
 }
+
+#if TARGET_OS_IPHONE
+- (void)updateVideoOrientation;
+- (void)orientationDidChange:(NSNotification *)notification;
+#endif
 
 @end
 
@@ -87,9 +136,38 @@
 
 			// this takes ownership
 			[self addOutput:output];
+
+			// Get video connection and configure orientation
+			videoConnection = [output connectionWithMediaType:AVMediaTypeVideo];
+			if (videoConnection) {
+#if TARGET_OS_IPHONE
+				// On iOS, set video orientation based on current interface orientation
+				if (videoConnection.supportsVideoOrientation) {
+					videoConnection.videoOrientation = get_current_video_orientation();
+				}
+#endif
+			}
 		}
 
 		[self commitConfiguration];
+
+#if TARGET_OS_IPHONE
+		// Register for orientation change notifications
+		if (@available(iOS 13.0, *)) {
+			[[NSNotificationCenter defaultCenter] addObserver:self
+													 selector:@selector(orientationDidChange:)
+														 name:UISceneDidChangeOrientationNotification
+													   object:nil];
+		} else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+			[[NSNotificationCenter defaultCenter] addObserver:self
+													 selector:@selector(orientationDidChange:)
+														 name:UIApplicationDidChangeStatusBarOrientationNotification
+													   object:nil];
+#pragma clang diagnostic pop
+		}
+#endif
 
 		// kick off our session..
 		[self startRunning];
@@ -100,6 +178,22 @@
 - (void)cleanup {
 	// stop running
 	[self stopRunning];
+
+#if TARGET_OS_IPHONE
+	// Unregister from orientation notifications
+	if (@available(iOS 13.0, *)) {
+		[[NSNotificationCenter defaultCenter] removeObserver:self
+														name:UISceneDidChangeOrientationNotification
+													  object:nil];
+	} else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+		[[NSNotificationCenter defaultCenter] removeObserver:self
+														name:UIApplicationDidChangeStatusBarOrientationNotification
+													  object:nil];
+#pragma clang diagnostic pop
+	}
+#endif
 
 	// cleanup
 	[self beginConfiguration];
@@ -116,6 +210,7 @@
 		[self removeOutput:output];
 		[output setSampleBufferDelegate:nil queue:nullptr];
 		output = nullptr;
+		videoConnection = nullptr;
 	}
 
 	[self commitConfiguration];
@@ -189,6 +284,25 @@
 	CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 }
 
+#if TARGET_OS_IPHONE
+- (void)updateVideoOrientation {
+	if (!videoConnection || !videoConnection.supportsVideoOrientation) {
+		return;
+	}
+
+	AVCaptureVideoOrientation newOrientation = get_current_video_orientation();
+	if (videoConnection.videoOrientation != newOrientation) {
+		[self beginConfiguration];
+		videoConnection.videoOrientation = newOrientation;
+		[self commitConfiguration];
+	}
+}
+
+- (void)orientationDidChange:(NSNotification *)notification {
+	[self updateVideoOrientation];
+}
+#endif
+
 @end
 
 //////////////////////////////////////////////////////////////////////////
@@ -232,7 +346,14 @@ void CameraFeedMacOS::set_device(AVCaptureDevice *p_device) {
 		position = CameraFeed::FEED_BACK;
 	} else if ([p_device position] == AVCaptureDevicePositionFront) {
 		position = CameraFeed::FEED_FRONT;
-	};
+	}
+
+	// Continuity Camera (iPhone as webcam) should be treated as front camera
+	if (@available(macOS 14.0, *)) {
+		if ([p_device deviceType] == AVCaptureDeviceTypeContinuityCamera) {
+			position = CameraFeed::FEED_FRONT;
+		}
+	}
 }
 
 bool CameraFeedMacOS::activate_feed() {
@@ -360,14 +481,8 @@ void CameraMacOS::update_feeds() {
 			newfeed.instantiate();
 			newfeed->set_device(device);
 
-			// Front cameras need mirroring for display, back cameras don't
-			Transform2D transform;
-			if ([device position] == AVCaptureDevicePositionFront) {
-				transform = Transform2D(-1.0, 0.0, 0.0, -1.0, 1.0, 1.0);
-			} else {
-				transform = Transform2D(1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
-			}
-			newfeed->set_transform(transform);
+			// No transform applied - mirroring should be handled by the application if needed
+			newfeed->set_transform(Transform2D());
 
 			add_feed(newfeed);
 		};
