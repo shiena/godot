@@ -59,6 +59,7 @@ extern "C" void godot_camera_update_orientation_ios(int p_orientation);
 	AVCaptureVideoDataOutput *output;
 #if TARGET_OS_IPHONE
 	AVCaptureConnection *videoConnection;
+	AVCaptureVideoOrientation currentOrientation;
 #endif
 }
 
@@ -108,6 +109,9 @@ extern "C" void godot_camera_update_orientation_ios(int p_orientation);
 		[self commitConfiguration];
 
 #if TARGET_OS_IPHONE
+		// Set default orientation
+		currentOrientation = AVCaptureVideoOrientationPortrait;
+
 		// Get video connection and set initial orientation
 		videoConnection = [output connectionWithMediaType:AVMediaTypeVideo];
 		if (videoConnection && videoConnection.supportsVideoOrientation) {
@@ -172,6 +176,7 @@ extern "C" void godot_camera_update_orientation_ios(int p_orientation);
 	}
 
 	videoConnection.videoOrientation = videoOrientation;
+	currentOrientation = videoOrientation;
 }
 #endif
 
@@ -203,6 +208,19 @@ extern "C" void godot_camera_update_orientation_ios(int p_orientation);
 			size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0);
 			size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
 
+#if TARGET_OS_IPHONE
+			// Swap width and height for landscape orientations
+			// because videoOrientation rotates the image but CVPixelBuffer returns original sensor dimensions
+			if (currentOrientation == AVCaptureVideoOrientationLandscapeLeft ||
+					currentOrientation == AVCaptureVideoOrientationLandscapeRight) {
+				size_t temp = new_width;
+				new_width = new_height;
+				new_height = temp;
+			}
+#endif
+
+			size_t row_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
+
 			if ((width[0] != new_width) || (height[0] != new_height)) {
 				width[0] = new_width;
 				height[0] = new_height;
@@ -220,6 +238,19 @@ extern "C" void godot_camera_update_orientation_ios(int p_orientation);
 			// do CbCr
 			size_t new_width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 1);
 			size_t new_height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1);
+
+#if TARGET_OS_IPHONE
+			// Swap width and height for landscape orientations
+			// because videoOrientation rotates the image but CVPixelBuffer returns original sensor dimensions
+			if (currentOrientation == AVCaptureVideoOrientationLandscapeLeft ||
+					currentOrientation == AVCaptureVideoOrientationLandscapeRight) {
+				size_t temp = new_width;
+				new_width = new_height;
+				new_height = temp;
+			}
+#endif
+
+			size_t row_stride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
 
 			if ((width[1] != new_width) || (height[1] != new_height)) {
 				width[1] = new_width;
