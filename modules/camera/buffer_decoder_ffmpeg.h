@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  camera_feed_linux.h                                                   */
+/*  buffer_decoder_ffmpeg.h                                               */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -30,55 +30,47 @@
 
 #pragma once
 
+#ifdef LINUXBSD_ENABLED
+#ifdef FFMPEG_ENABLED
+
 #include "buffer_decoder.h"
 
-#include "core/os/thread.h"
-#include "servers/camera/camera_feed.h"
+// Forward declarations for FFmpeg types
+struct AVCodec;
+struct AVCodecContext;
+struct AVPacket;
+struct AVFrame;
+struct SwsContext;
 
-#include <linux/videodev2.h>
+class FFmpegBufferDecoder : public BufferDecoder {
+protected:
+	const AVCodec *codec = nullptr;
+	AVCodecContext *codec_ctx = nullptr;
+	AVPacket *packet = nullptr;
+	AVFrame *frame = nullptr;
+	AVFrame *rgb_frame = nullptr;
+	SwsContext *sws_ctx = nullptr;
+	Vector<uint8_t> image_data;
+	bool initialized = false;
 
-struct StreamingBuffer;
-
-class CameraFeedLinux : public CameraFeed {
-	GDSOFTCLASS(CameraFeedLinux, CameraFeed);
-
-private:
-#ifdef FFMPEG_ENABLED
-	static bool ffmpeg_available;
-#endif
-	SafeFlag exit_flag;
-	Thread *thread = nullptr;
-	String device_name;
-	int file_descriptor = -1;
-	StreamingBuffer *buffers = nullptr;
-	unsigned int buffer_count = 0;
-	BufferDecoder *buffer_decoder = nullptr;
-
-	static void update_buffer_thread_func(void *p_func);
-
-	void _update_buffer();
-	void _query_device(const String &p_device_name);
-	void _add_format(v4l2_fmtdesc description, v4l2_frmsize_discrete size, int frame_numerator, int frame_denominator);
-	bool _request_buffers();
-	bool _start_capturing();
-	void _read_frame();
-	void _stop_capturing();
-	void _unmap_buffers(unsigned int p_count);
-	BufferDecoder *_create_buffer_decoder();
-	void _start_thread();
+	bool _init_codec(int p_codec_id);
+	void _cleanup();
 
 public:
-#ifdef FFMPEG_ENABLED
-	static void set_ffmpeg_available(bool p_available);
-	static bool is_ffmpeg_available();
-#endif
-	String get_device_name() const;
-	bool activate_feed() override;
-	void deactivate_feed() override;
-	bool set_format(int p_index, const Dictionary &p_parameters) override;
-	Array get_formats() const override;
-	FeedFormat get_format() const override;
-
-	CameraFeedLinux(const String &p_device_name);
-	~CameraFeedLinux() override;
+	FFmpegBufferDecoder(CameraFeed *p_camera_feed, int p_codec_id);
+	virtual ~FFmpegBufferDecoder();
+	virtual void decode(StreamingBuffer p_buffer) override;
 };
+
+class FFmpegMjpegBufferDecoder : public FFmpegBufferDecoder {
+public:
+	FFmpegMjpegBufferDecoder(CameraFeed *p_camera_feed);
+};
+
+class FFmpegH264BufferDecoder : public FFmpegBufferDecoder {
+public:
+	FFmpegH264BufferDecoder(CameraFeed *p_camera_feed);
+};
+
+#endif // FFMPEG_ENABLED
+#endif // LINUXBSD_ENABLED

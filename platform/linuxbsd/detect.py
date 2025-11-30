@@ -42,6 +42,7 @@ def get_opts():
         BoolVariable("use_sowrap", "Dynamically load system libraries", True),
         BoolVariable("alsa", "Use ALSA for audio support", True),
         BoolVariable("pipewire", "Use PipeWire for camera support", True),
+        BoolVariable("ffmpeg", "Use FFmpeg for camera codec support", True),
         BoolVariable("pulseaudio", "Use PulseAudio for audio support", True),
         BoolVariable("dbus", "Use D-Bus to handle screensaver and portal desktop settings", True),
         BoolVariable("speechd", "Use Speech Dispatcher for Text-to-Speech support", True),
@@ -349,6 +350,20 @@ def configure(env: "SConsEnvironment"):
                 env["pipewire"] = False
         else:
             env.Append(CPPDEFINES=["PIPEWIRE_ENABLED", "_REENTRANT"])
+
+    if env["ffmpeg"]:
+        if not env["use_sowrap"]:
+            has_avcodec = os.system("pkg-config --exists libavcodec") == 0
+            has_avutil = os.system("pkg-config --exists libavutil") == 0
+            has_swscale = os.system("pkg-config --exists libswscale") == 0
+            if has_avcodec and has_avutil and has_swscale:
+                env.ParseConfig("pkg-config libavcodec libavutil libswscale --cflags --libs")
+                env.Append(CPPDEFINES=["FFMPEG_ENABLED"])
+            else:
+                print_warning("FFmpeg development libraries not found. Disabling FFmpeg codec support.")
+                env["ffmpeg"] = False
+        else:
+            env.Append(CPPDEFINES=["FFMPEG_ENABLED"])
 
     if env["pulseaudio"]:
         if not env["use_sowrap"]:

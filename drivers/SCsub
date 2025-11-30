@@ -16,6 +16,9 @@ SConscript("windows/SCsub")
 SConscript("alsa/SCsub")
 SConscript("pipewire/SCsub")
 SConscript("pulseaudio/SCsub")
+
+# Video codec drivers
+SConscript("ffmpeg/SCsub")
 if env["platform"] == "windows":
     SConscript("wasapi/SCsub")
     if not env.msvc:

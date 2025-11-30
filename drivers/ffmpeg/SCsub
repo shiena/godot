@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+from misc.utility.scons_hints import *
+
+Import("env")
+
+if "ffmpeg" in env and env["ffmpeg"]:
+    if env["use_sowrap"]:
+        env.Prepend(CPPPATH=["#thirdparty/linuxbsd_headers/ffmpeg"])
+        env.add_source_files(env.drivers_sources, "avcodec-so_wrap.c")
+        env.add_source_files(env.drivers_sources, "avutil-so_wrap.c")
+        env.add_source_files(env.drivers_sources, "swscale-so_wrap.c")

@@ -30,12 +30,28 @@
 
 #include "camera_feed_linux.h"
 
+#ifdef FFMPEG_ENABLED
+#include "buffer_decoder_ffmpeg.h"
+#endif
+
 #include "servers/rendering/rendering_server.h"
 
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+
+#ifdef FFMPEG_ENABLED
+bool CameraFeedLinux::ffmpeg_available = false;
+
+void CameraFeedLinux::set_ffmpeg_available(bool p_available) {
+	ffmpeg_available = p_available;
+}
+
+bool CameraFeedLinux::is_ffmpeg_available() {
+	return ffmpeg_available;
+}
+#endif
 
 void CameraFeedLinux::update_buffer_thread_func(void *p_func) {
 	if (p_func) {
@@ -246,7 +262,19 @@ BufferDecoder *CameraFeedLinux::_create_buffer_decoder() {
 	switch (formats[selected_format].pixel_format) {
 		case V4L2_PIX_FMT_MJPEG:
 		case V4L2_PIX_FMT_JPEG:
+#ifdef FFMPEG_ENABLED
+			if (ffmpeg_available) {
+				return memnew(FFmpegMjpegBufferDecoder(this));
+			}
+#endif
 			return memnew(JpegBufferDecoder(this));
+#ifdef FFMPEG_ENABLED
+		case V4L2_PIX_FMT_H264:
+			if (ffmpeg_available) {
+				return memnew(FFmpegH264BufferDecoder(this));
+			}
+			ERR_FAIL_V_MSG(nullptr, "H.264 decoding requires FFmpeg libraries.");
+#endif
 		case V4L2_PIX_FMT_YUYV:
 		case V4L2_PIX_FMT_YYUV:
 		case V4L2_PIX_FMT_YVYU:

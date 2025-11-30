@@ -31,7 +31,13 @@
 #include "register_types.h"
 
 #if defined(LINUXBSD_ENABLED)
+#include "camera_feed_linux.h"
 #include "camera_linux.h"
+#if defined(FFMPEG_ENABLED) && defined(SOWRAP_ENABLED)
+#include "drivers/ffmpeg/avcodec-so_wrap.h"
+#include "drivers/ffmpeg/avutil-so_wrap.h"
+#include "drivers/ffmpeg/swscale-so_wrap.h"
+#endif
 #if defined(PIPEWIRE_ENABLED)
 #include "camera_pipewire.h"
 #endif
@@ -52,16 +58,39 @@ void initialize_camera_module(ModuleInitializationLevel p_level) {
 	}
 
 #if defined(LINUXBSD_ENABLED)
-#if defined(PIPEWIRE_ENABLED)
-#if defined(SOWRAP_ENABLED)
 #if defined(DEBUG_ENABLED)
 	int dylibloader_verbose = 1;
 #else
 	int dylibloader_verbose = 0;
 #endif // defined(DEBUG_ENABLED)
+
+#if defined(FFMPEG_ENABLED)
+#if defined(SOWRAP_ENABLED)
+	bool ffmpeg_available = (initialize_avcodec(dylibloader_verbose) == 0 &&
+			initialize_avutil(dylibloader_verbose) == 0 &&
+			initialize_swscale(dylibloader_verbose) == 0);
+	CameraFeedLinux::set_ffmpeg_available(ffmpeg_available);
+	if (ffmpeg_available) {
+		print_verbose("Camera: FFmpeg codecs available.");
+	} else {
+		print_verbose("Camera: FFmpeg libraries not found, using fallback decoders.");
+	}
+#else
+	CameraFeedLinux::set_ffmpeg_available(true);
+	print_verbose("Camera: FFmpeg codecs available (static linking).");
+#endif // defined(SOWRAP_ENABLED)
+#endif // defined(FFMPEG_ENABLED)
+
+#if defined(PIPEWIRE_ENABLED)
+#if defined(SOWRAP_ENABLED)
 	if (initialize_pipewire(dylibloader_verbose) == 0) {
-		print_verbose("CameraServer: Using PipeWire driver.");
-		CameraServer::make_default<CameraPipeWire>();
+		if (pw_check_library_version_dylibloader_wrapper_pipewire && pw_check_library_version(PW_MAJOR, PW_MINOR, PW_MICRO)) {
+			print_verbose("CameraServer: Using PipeWire driver.");
+			CameraServer::make_default<CameraPipeWire>();
+		} else {
+			print_verbose("CameraServer: Using V4L2 driver.");
+			CameraServer::make_default<CameraLinux>();
+		}
 	} else {
 		print_verbose("CameraServer: Using V4L2 driver.");
 		CameraServer::make_default<CameraLinux>();
