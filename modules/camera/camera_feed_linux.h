@@ -55,6 +55,7 @@ private:
 
 	void _update_buffer();
 	void _query_device(const String &p_device_name);
+	bool _is_format_supported(uint32_t p_pixel_format) const;
 	void _add_format(v4l2_fmtdesc description, v4l2_frmsize_discrete size, int frame_numerator, int frame_denominator);
 	bool _request_buffers();
 	bool _start_capturing();
