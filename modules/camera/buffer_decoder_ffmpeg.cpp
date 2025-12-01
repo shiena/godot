@@ -35,6 +35,8 @@
 
 #include "servers/camera/camera_feed.h"
 
+#include <cstring>
+
 #ifdef SOWRAP_ENABLED
 #include "drivers/ffmpeg/avcodec-so_wrap.h"
 #include "drivers/ffmpeg/avutil-so_wrap.h"

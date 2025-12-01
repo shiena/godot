@@ -50,6 +50,8 @@ protected:
 	AVFrame *frame = nullptr;
 	AVFrame *rgb_frame = nullptr;
 	SwsContext *sws_ctx = nullptr;
+	int sws_src_width = 0;
+	int sws_src_height = 0;
 	Vector<uint8_t> image_data;
 	bool initialized = false;
 
