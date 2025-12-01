@@ -134,6 +134,9 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 		return;
 	}
 
+	// Clear frame before decoding to avoid artifacts from previous frames
+	av_frame_unref(frame);
+
 	// Send packet to decoder
 	int ret = avcodec_send_packet(codec_ctx, packet);
 	if (ret < 0) {
