@@ -81,7 +81,12 @@ bool FFmpegBufferDecoder::_init_codec(int p_codec_id) {
 	codec_ctx->width = width;
 	codec_ctx->height = height;
 
-	// 4. Open codec
+	// 4. Set error recognition to be lenient (some cameras produce non-strict MJPEG)
+	codec_ctx->err_recognition = 0;
+	codec_ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
+	codec_ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
+
+	// 5. Open codec
 	if (avcodec_open2(codec_ctx, codec, nullptr) < 0) {
 		ERR_PRINT("FFmpeg: Could not open codec");
 		avcodec_free_context(&codec_ctx);
@@ -143,11 +148,32 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 		return;
 	}
 
-	// Initialize swscale context if not done yet (we need actual frame format)
-	if (!sws_ctx) {
+	// Use decoded frame dimensions for output
+	int out_width = frame->width;
+	int out_height = frame->height;
+
+	// Reinitialize if frame dimensions changed
+	if (!sws_ctx || out_width != sws_src_width || out_height != sws_src_height) {
+		if (sws_ctx) {
+			sws_freeContext(sws_ctx);
+			sws_ctx = nullptr;
+		}
+
+		// Reallocate RGB buffer for new dimensions
+		int rgb_size = av_image_get_buffer_size(AV_PIX_FMT_RGB24, out_width, out_height, 1);
+		if (rgb_size < 0) {
+			ERR_PRINT("FFmpeg: Could not get buffer size");
+			av_frame_unref(frame);
+			return;
+		}
+		image_data.resize(rgb_size);
+
+		av_image_fill_arrays(rgb_frame->data, rgb_frame->linesize,
+				image_data.ptrw(), AV_PIX_FMT_RGB24, out_width, out_height, 1);
+
 		sws_ctx = sws_getContext(
-				frame->width, frame->height, (enum AVPixelFormat)frame->format,
-				width, height, AV_PIX_FMT_RGB24,
+				out_width, out_height, (enum AVPixelFormat)frame->format,
+				out_width, out_height, AV_PIX_FMT_RGB24,
 				SWS_BILINEAR, nullptr, nullptr, nullptr);
 
 		if (!sws_ctx) {
@@ -155,18 +181,21 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 			av_frame_unref(frame);
 			return;
 		}
+
+		sws_src_width = out_width;
+		sws_src_height = out_height;
 	}
 
 	// Convert to RGB
 	sws_scale(sws_ctx,
-			frame->data, frame->linesize, 0, frame->height,
+			frame->data, frame->linesize, 0, out_height,
 			rgb_frame->data, rgb_frame->linesize);
 
 	// Update Godot image
 	if (image.is_valid()) {
-		image->set_data(width, height, false, Image::FORMAT_RGB8, image_data);
+		image->set_data(out_width, out_height, false, Image::FORMAT_RGB8, image_data);
 	} else {
-		image.instantiate(width, height, false, Image::FORMAT_RGB8, image_data);
+		image.instantiate(out_width, out_height, false, Image::FORMAT_RGB8, image_data);
 	}
 
 	// Send to camera feed
