@@ -207,17 +207,13 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 				rgb_frame->linesize[0], out_width * 3, rgb_size));
 	}
 
+	// Update rgb_frame data pointer in case image_data was reallocated
+	rgb_frame->data[0] = image_data.ptrw();
+
 	// Convert to RGB
 	int scaled_height = sws_scale(sws_ctx,
 			frame->data, frame->linesize, 0, out_height,
 			rgb_frame->data, rgb_frame->linesize);
-
-	// Debug: check if sws_scale processed all lines
-	static bool scale_checked = false;
-	if (!scale_checked) {
-		print_verbose(vformat("FFmpeg: sws_scale returned %d, expected %d", scaled_height, out_height));
-		scale_checked = true;
-	}
 
 	// Update Godot image
 	if (image.is_valid()) {
