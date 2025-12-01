@@ -124,6 +124,17 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 	packet->data = static_cast<uint8_t *>(p_buffer.start);
 	packet->size = p_buffer.length;
 
+	// Debug: check packet size and JPEG markers
+	static int frame_count = 0;
+	if (frame_count < 5) {
+		uint8_t *data = static_cast<uint8_t *>(p_buffer.start);
+		bool has_soi = (p_buffer.length >= 2 && data[0] == 0xFF && data[1] == 0xD8);
+		bool has_eoi = (p_buffer.length >= 2 && data[p_buffer.length - 2] == 0xFF && data[p_buffer.length - 1] == 0xD9);
+		print_verbose(vformat("FFmpeg: Frame %d, packet size=%d, SOI=%s, EOI=%s",
+				frame_count, (int)p_buffer.length, has_soi ? "yes" : "no", has_eoi ? "yes" : "no"));
+		frame_count++;
+	}
+
 	// Send packet to decoder
 	int ret = avcodec_send_packet(codec_ctx, packet);
 	if (ret < 0) {
