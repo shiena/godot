@@ -134,9 +134,6 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 		return;
 	}
 
-	// Flush decoder to avoid artifacts from previous frames
-	avcodec_flush_buffers(codec_ctx);
-
 	// Send packet to decoder
 	int ret = avcodec_send_packet(codec_ctx, packet);
 	if (ret < 0) {
@@ -224,16 +221,15 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 	uint8_t *rgb_buffer = image_data.ptrw();
 	rgb_frame->data[0] = rgb_buffer;
 
-	// Clear buffer before conversion (debug: check if glitch is from previous data)
-	memset(rgb_buffer, 128, image_data.size());
-
 	// Convert to RGB
 	sws_scale(sws_ctx,
 			frame->data, frame->linesize, 0, out_height,
 			rgb_frame->data, rgb_frame->linesize);
 
-	// Create a copy of image data for thread safety
-	Ref<Image> frame_image = Image::create_from_data(out_width, out_height, false, Image::FORMAT_RGB8, image_data);
+	// Create image directly from image_data (avoid extra copy)
+	Ref<Image> frame_image;
+	frame_image.instantiate();
+	frame_image->set_data(out_width, out_height, false, Image::FORMAT_RGB8, image_data.duplicate());
 
 	// Send to camera feed
 	camera_feed->set_rgb_image(frame_image);
