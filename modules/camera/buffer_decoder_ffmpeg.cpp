@@ -177,6 +177,7 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 			return;
 		}
 		image_data.resize(rgb_size);
+		memset(image_data.ptrw(), 0, rgb_size);
 
 		av_image_fill_arrays(rgb_frame->data, rgb_frame->linesize,
 				image_data.ptrw(), AV_PIX_FMT_RGB24, out_width, out_height, 1);
