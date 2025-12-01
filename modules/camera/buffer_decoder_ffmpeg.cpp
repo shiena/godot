@@ -151,6 +151,8 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 	if (!sws_ctx) {
 		print_verbose(vformat("FFmpeg: Decoded frame %dx%d, format %d, expected %dx%d",
 				out_width, out_height, frame->format, width, height));
+		print_verbose(vformat("FFmpeg: Input linesize[0]=%d, [1]=%d, [2]=%d",
+				frame->linesize[0], frame->linesize[1], frame->linesize[2]));
 	}
 
 	// Reinitialize if frame dimensions changed
@@ -185,6 +187,9 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 
 		sws_src_width = out_width;
 		sws_src_height = out_height;
+
+		print_verbose(vformat("FFmpeg: Output linesize=%d, expected=%d, buffer_size=%d",
+				rgb_frame->linesize[0], out_width * 3, rgb_size));
 	}
 
 	// Convert to RGB
