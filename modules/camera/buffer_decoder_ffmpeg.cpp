@@ -143,6 +143,13 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 		return;
 	}
 
+	// Skip incomplete/corrupt frames
+	if (frame->decode_error_flags != 0) {
+		print_verbose("FFmpeg: Skipping corrupt frame");
+		av_frame_unref(frame);
+		return;
+	}
+
 	// Use decoded frame dimensions for output
 	int out_width = frame->width;
 	int out_height = frame->height;
