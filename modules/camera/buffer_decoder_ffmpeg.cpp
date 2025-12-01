@@ -207,11 +207,12 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 				rgb_frame->linesize[0], out_width * 3, rgb_size));
 	}
 
-	// Update rgb_frame data pointer in case image_data was reallocated
-	rgb_frame->data[0] = image_data.ptrw();
+	// Get buffer pointer once to avoid reallocation issues
+	uint8_t *rgb_buffer = image_data.ptrw();
+	rgb_frame->data[0] = rgb_buffer;
 
 	// Clear buffer before conversion (debug: check if glitch is from previous data)
-	memset(image_data.ptrw(), 128, image_data.size());
+	memset(rgb_buffer, 128, image_data.size());
 
 	// Convert to RGB
 	sws_scale(sws_ctx,
