@@ -150,6 +150,13 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 		return;
 	}
 
+	// Check if frame data pointers are valid
+	if (!frame->data[0] || !frame->data[1] || !frame->data[2]) {
+		print_verbose("FFmpeg: Frame data is null");
+		av_frame_unref(frame);
+		return;
+	}
+
 	// Use decoded frame dimensions for output
 	int out_width = frame->width;
 	int out_height = frame->height;
@@ -201,9 +208,16 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 	}
 
 	// Convert to RGB
-	sws_scale(sws_ctx,
+	int scaled_height = sws_scale(sws_ctx,
 			frame->data, frame->linesize, 0, out_height,
 			rgb_frame->data, rgb_frame->linesize);
+
+	// Debug: check if sws_scale processed all lines
+	static bool scale_checked = false;
+	if (!scale_checked) {
+		print_verbose(vformat("FFmpeg: sws_scale returned %d, expected %d", scaled_height, out_height));
+		scale_checked = true;
+	}
 
 	// Update Godot image
 	if (image.is_valid()) {
