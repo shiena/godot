@@ -165,8 +165,8 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 	if (!sws_ctx) {
 		print_verbose(vformat("FFmpeg: Decoded frame %dx%d, format %d, expected %dx%d",
 				out_width, out_height, frame->format, width, height));
-		print_verbose(vformat("FFmpeg: Input linesize[0]=%d, [1]=%d, [2]=%d",
-				frame->linesize[0], frame->linesize[1], frame->linesize[2]));
+		print_verbose(vformat("FFmpeg: Input linesize[0]=%d (width=%d), [1]=%d, [2]=%d",
+				frame->linesize[0], out_width, frame->linesize[1], frame->linesize[2]));
 	}
 
 	// Reinitialize if frame dimensions changed
@@ -210,8 +210,11 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 	// Update rgb_frame data pointer in case image_data was reallocated
 	rgb_frame->data[0] = image_data.ptrw();
 
+	// Clear buffer before conversion (debug: check if glitch is from previous data)
+	memset(image_data.ptrw(), 128, image_data.size());
+
 	// Convert to RGB
-	int scaled_height = sws_scale(sws_ctx,
+	sws_scale(sws_ctx,
 			frame->data, frame->linesize, 0, out_height,
 			rgb_frame->data, rgb_frame->linesize);
 
