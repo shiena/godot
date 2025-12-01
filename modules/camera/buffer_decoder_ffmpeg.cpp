@@ -215,15 +215,11 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 			frame->data, frame->linesize, 0, out_height,
 			rgb_frame->data, rgb_frame->linesize);
 
-	// Update Godot image
-	if (image.is_valid()) {
-		image->set_data(out_width, out_height, false, Image::FORMAT_RGB8, image_data);
-	} else {
-		image.instantiate(out_width, out_height, false, Image::FORMAT_RGB8, image_data);
-	}
+	// Create a copy of image data for thread safety
+	Ref<Image> frame_image = Image::create_from_data(out_width, out_height, false, Image::FORMAT_RGB8, image_data);
 
 	// Send to camera feed
-	camera_feed->set_rgb_image(image);
+	camera_feed->set_rgb_image(frame_image);
 
 	// Unref frame for next decode
 	av_frame_unref(frame);
