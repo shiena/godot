@@ -81,12 +81,7 @@ bool FFmpegBufferDecoder::_init_codec(int p_codec_id) {
 	codec_ctx->width = width;
 	codec_ctx->height = height;
 
-	// 4. Set error recognition to be lenient (some cameras produce non-strict MJPEG)
-	codec_ctx->err_recognition = 0;
-	codec_ctx->flags |= AV_CODEC_FLAG_OUTPUT_CORRUPT;
-	codec_ctx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
-
-	// 5. Open codec
+	// 4. Open codec
 	if (avcodec_open2(codec_ctx, codec, nullptr) < 0) {
 		ERR_PRINT("FFmpeg: Could not open codec");
 		avcodec_free_context(&codec_ctx);
@@ -151,6 +146,12 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 	// Use decoded frame dimensions for output
 	int out_width = frame->width;
 	int out_height = frame->height;
+
+	// Debug: print frame info on first frame
+	if (!sws_ctx) {
+		print_verbose(vformat("FFmpeg: Decoded frame %dx%d, format %d, expected %dx%d",
+				out_width, out_height, frame->format, width, height));
+	}
 
 	// Reinitialize if frame dimensions changed
 	if (!sws_ctx || out_width != sws_src_width || out_height != sws_src_height) {
