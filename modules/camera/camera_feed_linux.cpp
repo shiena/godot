@@ -215,7 +215,11 @@ void CameraFeedLinux::_read_frame() {
 		return;
 	}
 
-	buffer_decoder->decode(buffers[buffer.index]);
+	// Use bytesused instead of buffer length for compressed formats (MJPEG, H.264)
+	StreamingBuffer streaming_buffer;
+	streaming_buffer.start = buffers[buffer.index].start;
+	streaming_buffer.length = buffer.bytesused;
+	buffer_decoder->decode(streaming_buffer);
 
 	if (ioctl(file_descriptor, VIDIOC_QBUF, &buffer) == -1) {
 		print_error(vformat("ioctl(VIDIOC_QBUF) error: %d.", errno));
