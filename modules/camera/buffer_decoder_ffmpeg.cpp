@@ -192,7 +192,7 @@ void FFmpegBufferDecoder::decode(StreamingBuffer p_buffer) {
 		sws_ctx = sws_getContext(
 				out_width, out_height, (enum AVPixelFormat)frame->format,
 				out_width, out_height, AV_PIX_FMT_RGB24,
-				SWS_BILINEAR, nullptr, nullptr, nullptr);
+				SWS_BILINEAR | SWS_ACCURATE_RND, nullptr, nullptr, nullptr);
 
 		if (!sws_ctx) {
 			ERR_PRINT("FFmpeg: Could not initialize swscale context");
