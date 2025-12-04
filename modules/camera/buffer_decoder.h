@@ -33,6 +33,8 @@
 #include "core/io/image.h"
 #include "core/templates/vector.h"
 
+#include <turbojpeg.h>
+
 class CameraFeed;
 
 struct StreamingBuffer {
@@ -105,7 +107,19 @@ public:
 };
 
 class JpegBufferDecoder : public BufferDecoder {
+private:
+	tjhandle tj_instance = nullptr;
+	Vector<uint8_t> y_plane_buffer; // Y plane for decoding and Image::set_data.
+	Vector<uint8_t> cb_plane_buffer; // Cb plane for decoding.
+	Vector<uint8_t> cr_plane_buffer; // Cr plane for decoding.
+	Vector<uint8_t> cbcr_buffer; // Interleaved CbCr (RG8 format).
+	Ref<Image> y_image;
+	Ref<Image> cbcr_image;
+	int buffer_width = 0;
+	int buffer_height = 0;
+
 public:
 	JpegBufferDecoder(CameraFeed *p_camera_feed);
+	~JpegBufferDecoder();
 	virtual void decode(StreamingBuffer p_buffer) override;
 };
