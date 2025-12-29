@@ -35,7 +35,7 @@ const String KEY_HEIGHT("height");
 const String KEY_WIDTH("width");
 } //namespace
 
-void CameraFeedWeb::_on_get_pixel_data(void *p_context, const uint8_t *p_data, const int p_length, const int p_width, const int p_height, const int p_orientation, const char *p_error) {
+void CameraFeedWeb::_on_get_pixel_data(void *p_context, const uint8_t *p_data, const int p_length, const int p_width, const int p_height, const int p_orientation, const int p_facing_mode, const char *p_error) {
 	// Validate context first to avoid dereferencing null on error paths.
 	ERR_FAIL_NULL_MSG(p_context, "Camera feed error: Null context received.");
 
@@ -58,11 +58,25 @@ void CameraFeedWeb::_on_get_pixel_data(void *p_context, const uint8_t *p_data, c
 		return;
 	}
 
-	// Apply screen orientation to transform.
+	// Update feed position based on facing mode.
+	// p_facing_mode: 0=unknown, 1=user/front, 2=environment/back
+	if (p_facing_mode == 1) {
+		feed->position = CameraFeed::FEED_FRONT;
+	} else if (p_facing_mode == 2) {
+		feed->position = CameraFeed::FEED_BACK;
+	}
+
+	// Apply screen orientation to transform (following Android pattern).
 	// Web camera image doesn't rotate with device, so we need to compensate.
 	// screen.orientation.angle: 0=portrait, 90=landscape-left, 180=portrait-upside-down, 270=landscape-right
-	float rotation_rad = Math::deg_to_rad(static_cast<float>(-p_orientation));
-	feed->transform = Transform2D().scaled(Vector2(1.0, -1.0)).rotated(rotation_rad);
+	// Unlike Android, web browsers don't provide sensor_orientation, so we assume 0.
+	// For front camera, use positive sign; for back camera, use negative sign (like Android fallback).
+	int sign = (feed->position == CameraFeed::FEED_FRONT) ? 1 : -1;
+	int rotation_deg = (-p_orientation * sign + 360) % 360;
+	float rotation_rad = Math::deg_to_rad(static_cast<float>(rotation_deg));
+	feed->transform = Transform2D().rotated(rotation_rad);
+	print_verbose(vformat("CameraFeedWeb: orientation=%d, facing_mode=%d, position=%d, sign=%d, rotation_deg=%d, rotation_rad=%f",
+			p_orientation, p_facing_mode, feed->position, sign, rotation_deg, rotation_rad));
 
 	Vector<uint8_t> &data = feed->data;
 	Ref<Image> image = feed->image;
