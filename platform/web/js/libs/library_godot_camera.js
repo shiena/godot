@@ -106,12 +106,13 @@ const GodotCamera = {
 		 * @param {number} dataLen Length of pixel data
 		 * @param {number} width Image width
 		 * @param {number} height Image height
+		 * @param {number} orientation Screen orientation angle (0, 90, 180, 270)
 		 * @param {string|null} errorMsg Error message if any
 		 * @returns {void}
 		 */
-		sendGetPixelDataCallback: function (callback, context, dataPtr, dataLen, width, height, errorMsg) {
+		sendGetPixelDataCallback: function (callback, context, dataPtr, dataLen, width, height, orientation, errorMsg) {
 			const errorMsgPtr = errorMsg ? GodotRuntime.allocString(errorMsg) : 0;
-			callback(context, dataPtr, dataLen, width, height, errorMsgPtr);
+			callback(context, dataPtr, dataLen, width, height, orientation, errorMsgPtr);
 			if (errorMsgPtr) {
 				GodotRuntime.free(errorMsgPtr);
 			}
@@ -321,6 +322,10 @@ const GodotCamera = {
 								const dataPtr = GodotRuntime.malloc(pixelData.length);
 								GodotRuntime.heapCopy(HEAPU8, pixelData, dataPtr);
 
+								// Get screen orientation (fallback for older iOS Safari)
+								// eslint-disable-next-line no-undef
+								const screenOrientation = screen?.orientation?.angle ?? window.orientation ?? 0;
+
 								GodotCamera.sendGetPixelDataCallback(
 									callback,
 									context,
@@ -328,11 +333,12 @@ const GodotCamera = {
 									pixelData.length,
 									_width,
 									_height,
+									screenOrientation,
 									null);
 
 								GodotRuntime.free(dataPtr);
 							} catch (error) {
-								GodotCamera.sendGetPixelDataCallback(callback, context, 0, 0, 0, 0, error.message);
+								GodotCamera.sendGetPixelDataCallback(callback, context, 0, 0, 0, 0, 0, error.message);
 
 								if (error.name === 'SecurityError' || error.name === 'NotAllowedError') {
 									GodotRuntime.print('Security error, stopping stream:', error);
@@ -348,7 +354,7 @@ const GodotCamera = {
 
 					camera.animationFrameId = requestAnimationFrame(captureFrame);
 				} catch (error) {
-					GodotCamera.sendGetPixelDataCallback(callback, context, 0, 0, 0, 0, error.message);
+					GodotCamera.sendGetPixelDataCallback(callback, context, 0, 0, 0, 0, 0, error.message);
 					if (error && (error.name === 'SecurityError' || error.name === 'NotAllowedError')) {
 						deniedCallback(context);
 					}

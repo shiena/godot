@@ -35,7 +35,7 @@ const String KEY_HEIGHT("height");
 const String KEY_WIDTH("width");
 } //namespace
 
-void CameraFeedWeb::_on_get_pixel_data(void *p_context, const uint8_t *p_data, const int p_length, const int p_width, const int p_height, const char *p_error) {
+void CameraFeedWeb::_on_get_pixel_data(void *p_context, const uint8_t *p_data, const int p_length, const int p_width, const int p_height, const int p_orientation, const char *p_error) {
 	// Validate context first to avoid dereferencing null on error paths.
 	ERR_FAIL_NULL_MSG(p_context, "Camera feed error: Null context received.");
 
@@ -57,6 +57,12 @@ void CameraFeedWeb::_on_get_pixel_data(void *p_context, const uint8_t *p_data, c
 		ERR_PRINT("Camera feed error: Invalid pixel data received.");
 		return;
 	}
+
+	// Apply screen orientation to transform.
+	// Web camera image doesn't rotate with device, so we need to compensate.
+	// screen.orientation.angle: 0=portrait, 90=landscape-left, 180=portrait-upside-down, 270=landscape-right
+	float rotation_rad = Math::deg_to_rad(static_cast<float>(-p_orientation));
+	feed->transform = Transform2D().scaled(Vector2(1.0, -1.0)).rotated(rotation_rad);
 
 	Vector<uint8_t> &data = feed->data;
 	Ref<Image> image = feed->image;
