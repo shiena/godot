@@ -201,8 +201,12 @@ const GodotCamera = {
 						return videoTrack?.getCapabilities() || GodotCamera.defaultMinimumCapabilities;
 					};
 					const devices = await navigator.mediaDevices.enumerateDevices();
-					result.cameras = devices
-						.filter((device) => device.kind === 'videoinput')
+					const videoDevices = devices.filter((device) => device.kind === 'videoinput');
+					GodotRuntime.print(`Found ${videoDevices.length} video input devices:`);
+					videoDevices.forEach((device, index) => {
+						GodotRuntime.print(`  [${index}] id=${device.deviceId.substring(0, 16)}... label="${device.label}"`);
+					});
+					result.cameras = videoDevices
 						.map((device, index) => ({
 							index,
 							id: device.deviceId,

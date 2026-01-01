@@ -66,17 +66,11 @@ void CameraFeedWeb::_on_get_pixel_data(void *p_context, const uint8_t *p_data, c
 		feed->position = CameraFeed::FEED_BACK;
 	}
 
-	// Apply screen orientation to transform (following Android pattern).
-	// Web camera image doesn't rotate with device, so we need to compensate.
-	// screen.orientation.angle: 0=portrait, 90=landscape-left, 180=portrait-upside-down, 270=landscape-right
-	// Unlike Android, web browsers don't provide sensor_orientation, so we assume 0.
-	// For front camera, use positive sign; for back camera, use negative sign (like Android fallback).
-	int sign = (feed->position == CameraFeed::FEED_FRONT) ? 1 : -1;
-	int rotation_deg = (-p_orientation * sign + 360) % 360;
-	float rotation_rad = Math::deg_to_rad(static_cast<float>(rotation_deg));
-	feed->transform = Transform2D().rotated(rotation_rad);
-	print_verbose(vformat("CameraFeedWeb: orientation=%d, facing_mode=%d, position=%d, sign=%d, rotation_deg=%d, rotation_rad=%f",
-			p_orientation, p_facing_mode, feed->position, sign, rotation_deg, rotation_rad));
+	// Apply rotation based on screen orientation (convert degrees to radians).
+	// Also apply vertical flip for all cameras.
+	feed->transform = Transform2D();
+	feed->transform = feed->transform.rotated(Math::deg_to_rad(static_cast<float>(p_orientation)));
+	feed->transform = feed->transform.scaled(Vector2(1, -1));
 
 	Vector<uint8_t> &data = feed->data;
 	Ref<Image> image = feed->image;
