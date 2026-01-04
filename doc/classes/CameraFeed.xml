@@ -71,6 +71,24 @@
 				- [code]"separate"[/code] will result in [constant FEED_YCBCR_SEP];
 				- [code]"grayscale"[/code] will result in desaturated [constant FEED_RGB];
 				- [code]"copy"[/code] will result in [constant FEED_YCBCR].
+				[b]Windows only:[/b] The following camera control parameters can be set. Use an integer value for manual control, or [code]"auto"[/code] for automatic control (where supported).
+				Camera control:
+				- [code]focus[/code]: Focus distance (supports [code]"auto"[/code]).
+				- [code]exposure[/code]: Exposure time (supports [code]"auto"[/code]).
+				- [code]zoom[/code]: Zoom level.
+				- [code]iris[/code]: Iris aperture (supports [code]"auto"[/code]).
+				- [code]pan[/code]: Pan angle.
+				- [code]tilt[/code]: Tilt angle.
+				- [code]roll[/code]: Roll angle.
+				Video processing:
+				- [code]white_balance[/code]: White balance temperature (supports [code]"auto"[/code]).
+				- [code]brightness[/code]: Brightness level.
+				- [code]contrast[/code]: Contrast level.
+				- [code]saturation[/code]: Color saturation.
+				- [code]sharpness[/code]: Sharpness level.
+				- [code]gamma[/code]: Gamma correction.
+				- [code]gain[/code]: Signal gain.
+				- [code]backlight_compensation[/code]: Backlight compensation level.
 			</description>
 		</method>
 		<method name="set_name">

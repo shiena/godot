@@ -457,7 +457,10 @@ bool CameraFeedWindows::activate_feed() {
 		}
 	}
 
-	// Step 7: Start capture thread.
+	// Step 7: Apply camera parameters.
+	apply_camera_parameters();
+
+	// Step 8: Start capture thread.
 	worker = std::thread(capture, this);
 	return true;
 }
@@ -641,7 +644,127 @@ bool CameraFeedWindows::set_format(int p_index, const Dictionary &p_parameters) 
 	base_width = 0;
 	base_height = 0;
 
+	// Apply parameters immediately if active.
+	if (is_active()) {
+		apply_camera_parameters();
+	}
+
 	return true;
+}
+
+// Helper struct for camera control parameters.
+struct CameraControlParam {
+	const char *name;
+	long property;
+	bool supports_auto;
+};
+
+// Helper struct for video proc amp parameters.
+struct VideoProcAmpParam {
+	const char *name;
+	long property;
+	bool supports_auto;
+};
+
+static const CameraControlParam CAMERA_CONTROL_PARAMS[] = {
+	{ "focus", CameraControl_Focus, true },
+	{ "exposure", CameraControl_Exposure, true },
+	{ "zoom", CameraControl_Zoom, false },
+	{ "iris", CameraControl_Iris, true },
+	{ "pan", CameraControl_Pan, false },
+	{ "tilt", CameraControl_Tilt, false },
+	{ "roll", CameraControl_Roll, false },
+};
+
+static const VideoProcAmpParam VIDEO_PROC_AMP_PARAMS[] = {
+	{ "white_balance", VideoProcAmp_WhiteBalance, true },
+	{ "brightness", VideoProcAmp_Brightness, false },
+	{ "contrast", VideoProcAmp_Contrast, false },
+	{ "saturation", VideoProcAmp_Saturation, false },
+	{ "sharpness", VideoProcAmp_Sharpness, false },
+	{ "gamma", VideoProcAmp_Gamma, false },
+	{ "gain", VideoProcAmp_Gain, false },
+	{ "backlight_compensation", VideoProcAmp_BacklightCompensation, false },
+};
+
+void CameraFeedWindows::apply_camera_parameters() {
+	if (!imf_media_source || parameters.is_empty()) {
+		return;
+	}
+
+	// Get IAMCameraControl interface.
+	IAMCameraControl *camera_control = nullptr;
+	if (SUCCEEDED(imf_media_source->QueryInterface(IID_PPV_ARGS(&camera_control)))) {
+		for (const CameraControlParam &param : CAMERA_CONTROL_PARAMS) {
+			if (!parameters.has(param.name)) {
+				continue;
+			}
+
+			Variant value = parameters[param.name];
+			long flags = CameraControl_Flags_Manual;
+			long prop_value = 0;
+
+			if (value.get_type() == Variant::STRING && String(value) == "auto") {
+				if (param.supports_auto) {
+					flags = CameraControl_Flags_Auto;
+					// Get current value to use with auto flag.
+					long current_value, current_flags;
+					if (SUCCEEDED(camera_control->Get(param.property, &current_value, &current_flags))) {
+						prop_value = current_value;
+					}
+				} else {
+					continue; // Skip if auto not supported.
+				}
+			} else if (value.get_type() == Variant::INT || value.get_type() == Variant::FLOAT) {
+				prop_value = (long)(int64_t)value;
+			} else {
+				continue; // Invalid value type.
+			}
+
+			HRESULT hr = camera_control->Set(param.property, prop_value, flags);
+			if (FAILED(hr)) {
+				print_verbose(vformat("Failed to set camera control %s: 0x%08x", param.name, (uint32_t)hr));
+			}
+		}
+		camera_control->Release();
+	}
+
+	// Get IAMVideoProcAmp interface.
+	IAMVideoProcAmp *video_proc_amp = nullptr;
+	if (SUCCEEDED(imf_media_source->QueryInterface(IID_PPV_ARGS(&video_proc_amp)))) {
+		for (const VideoProcAmpParam &param : VIDEO_PROC_AMP_PARAMS) {
+			if (!parameters.has(param.name)) {
+				continue;
+			}
+
+			Variant value = parameters[param.name];
+			long flags = VideoProcAmp_Flags_Manual;
+			long prop_value = 0;
+
+			if (value.get_type() == Variant::STRING && String(value) == "auto") {
+				if (param.supports_auto) {
+					flags = VideoProcAmp_Flags_Auto;
+					// Get current value to use with auto flag.
+					long current_value, current_flags;
+					if (SUCCEEDED(video_proc_amp->Get(param.property, &current_value, &current_flags))) {
+						prop_value = current_value;
+					}
+				} else {
+					continue; // Skip if auto not supported.
+				}
+			} else if (value.get_type() == Variant::INT || value.get_type() == Variant::FLOAT) {
+				prop_value = (long)(int64_t)value;
+			} else {
+				continue; // Invalid value type.
+			}
+
+			HRESULT hr = video_proc_amp->Set(param.property, prop_value, flags);
+			if (FAILED(hr)) {
+				print_verbose(vformat("Failed to set video proc amp %s: 0x%08x", param.name, (uint32_t)hr));
+			}
+		}
+		video_proc_amp->Release();
+	}
 }
 
 BufferDecoder *CameraFeedWindows::_create_buffer_decoder() {

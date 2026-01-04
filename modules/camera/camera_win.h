@@ -34,6 +34,7 @@
 #include "servers/camera/camera_feed.h"
 #include "servers/camera/camera_server.h"
 
+#include <dshow.h>
 #include <initguid.h>
 #include <mfapi.h>
 #include <mferror.h>
@@ -85,6 +86,7 @@ class CameraFeedWindows : public CameraFeed {
 	void read();
 	void fill_formats(IMFMediaTypeHandler *p_imf_media_type_handler);
 	BufferDecoder *_create_buffer_decoder();
+	void apply_camera_parameters();
 
 public:
 	static Ref<CameraFeedWindows> create(IMFActivate *pDevice);
