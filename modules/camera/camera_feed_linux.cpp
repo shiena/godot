@@ -37,6 +37,24 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+static String GetColorRange(uint32_t pixel_format) {
+	switch (pixel_format) {
+		// YUV formats typically use video range (16-235).
+		case V4L2_PIX_FMT_YUYV:
+		case V4L2_PIX_FMT_YYUV:
+		case V4L2_PIX_FMT_YVYU:
+		case V4L2_PIX_FMT_UYVY:
+		case V4L2_PIX_FMT_VYUY:
+		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_NV21:
+		case V4L2_PIX_FMT_YUV420:
+		case V4L2_PIX_FMT_YVU420:
+			return "video";
+		default:
+			return "";
+	}
+}
+
 void CameraFeedLinux::update_buffer_thread_func(void *p_func) {
 	if (p_func) {
 		CameraFeedLinux *camera_feed_linux = (CameraFeedLinux *)p_func;
@@ -297,6 +315,10 @@ Array CameraFeedLinux::get_formats() const {
 		dictionary["format"] = format.format;
 		dictionary["frame_numerator"] = format.frame_numerator;
 		dictionary["frame_denominator"] = format.frame_denominator;
+		String color_range = GetColorRange(format.pixel_format);
+		if (!color_range.is_empty()) {
+			dictionary["color_range"] = color_range;
+		}
 		result.push_back(dictionary);
 	}
 	return result;

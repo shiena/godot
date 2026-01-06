@@ -85,6 +85,16 @@ String GetFormatName(const int32_t &format) {
 	return "Unsupported";
 }
 
+String GetColorRange(const int32_t &format) {
+	switch (format) {
+		case AIMAGE_FORMAT_YUV_420_888:
+			// YUV formats typically use video range (16-235).
+			return "video";
+		default:
+			return "";
+	}
+}
+
 //////////////////////////////////////////////////////////////////////////
 // CameraFeedAndroid - Subclass for our camera feed on Android
 
@@ -375,6 +385,10 @@ Array CameraFeedAndroid::get_formats() const {
 		dictionary["width"] = feed_format.width;
 		dictionary["height"] = feed_format.height;
 		dictionary["format"] = feed_format.format;
+		String color_range = GetColorRange(feed_format.pixel_format);
+		if (!color_range.is_empty()) {
+			dictionary["color_range"] = color_range;
+		}
 		result.push_back(dictionary);
 	}
 	return result;
