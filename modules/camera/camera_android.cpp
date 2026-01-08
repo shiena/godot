@@ -77,12 +77,26 @@ public:
 	return #val
 #endif
 
-String GetFormatName(const int32_t &format) {
-	IF_EQUAL_RETURN(format, YUV_420_888);
-	IF_EQUAL_RETURN(format, RGB_888);
-	IF_EQUAL_RETURN(format, RGBA_8888);
+String get_format_name(int32_t format) {
+	switch (format) {
+		case AIMAGE_FORMAT_YUV_420_888:
+			return "YUV420";
+		case AIMAGE_FORMAT_RGB_888:
+			return "RGB";
+		case AIMAGE_FORMAT_RGBA_8888:
+			return "RGBA";
+		default:
+			return "Unsupported";
+	}
+}
 
-	return "Unsupported";
+String get_color_range(int32_t format) {
+	switch (format) {
+		case AIMAGE_FORMAT_YUV_420_888:
+			return "video";
+		default:
+			return "";
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -216,7 +230,7 @@ void CameraFeedAndroid::_add_formats() {
 				CameraFeed::FeedFormat feed_format;
 				feed_format.width = formats.data.i32[f + 1];
 				feed_format.height = formats.data.i32[f + 2];
-				feed_format.format = GetFormatName(format);
+				feed_format.format = get_format_name(format);
 				feed_format.pixel_format = format;
 				this->formats.append(feed_format);
 			}
@@ -375,6 +389,10 @@ Array CameraFeedAndroid::get_formats() const {
 		dictionary["width"] = feed_format.width;
 		dictionary["height"] = feed_format.height;
 		dictionary["format"] = feed_format.format;
+		String color_range = get_color_range(feed_format.pixel_format);
+		if (!color_range.is_empty()) {
+			dictionary["color_range"] = color_range;
+		}
 		result.push_back(dictionary);
 	}
 	return result;
