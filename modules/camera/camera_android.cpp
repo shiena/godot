@@ -206,28 +206,31 @@ void CameraFeedAndroid::_set_rotation() {
 }
 
 void CameraFeedAndroid::_add_formats() {
-	// Get supported formats
-	ACameraMetadata_const_entry formats;
-	camera_status_t status = ACameraMetadata_getConstEntry(metadata, ACAMERA_SCALER_AVAILABLE_STREAM_CONFIGURATIONS, &formats);
+	// Get min frame durations (contains only output streams).
+	// Format: [format, width, height, minDuration(ns)] x n
+	ACameraMetadata_const_entry durations;
+	camera_status_t status = ACameraMetadata_getConstEntry(metadata, ACAMERA_SCALER_AVAILABLE_MIN_FRAME_DURATIONS, &durations);
 
 	if (status == ACAMERA_OK) {
-		for (uint32_t f = 0; f < formats.count; f += 4) {
-			// Only support output streams
-			int32_t input = formats.data.i32[f + 3];
-			if (input) {
-				continue;
-			}
-
-			// Get format and resolution
-			int32_t format = formats.data.i32[f + 0];
+		for (uint32_t i = 0; i < durations.count; i += 4) {
+			int32_t format = static_cast<int32_t>(durations.data.i64[i + 0]);
 			if (format == AIMAGE_FORMAT_YUV_420_888 ||
 					format == AIMAGE_FORMAT_RGBA_8888 ||
 					format == AIMAGE_FORMAT_RGB_888) {
 				CameraFeed::FeedFormat feed_format;
-				feed_format.width = formats.data.i32[f + 1];
-				feed_format.height = formats.data.i32[f + 2];
+				feed_format.width = static_cast<int>(durations.data.i64[i + 1]);
+				feed_format.height = static_cast<int>(durations.data.i64[i + 2]);
 				feed_format.format = GetFormatName(format);
 				feed_format.pixel_format = format;
+
+				// Calculate FPS: fps = 1,000,000,000 / minDuration
+				// Note: Some devices return 0 for minDuration (lacks MANUAL_SENSOR capability).
+				int64_t min_duration = durations.data.i64[i + 3];
+				if (min_duration > 0) {
+					feed_format.frame_numerator = static_cast<int>(1000000000LL / min_duration);
+					feed_format.frame_denominator = 1;
+				}
+
 				this->formats.append(feed_format);
 			}
 		}
@@ -385,6 +388,8 @@ Array CameraFeedAndroid::get_formats() const {
 		dictionary["width"] = feed_format.width;
 		dictionary["height"] = feed_format.height;
 		dictionary["format"] = feed_format.format;
+		dictionary["frame_numerator"] = feed_format.frame_numerator;
+		dictionary["frame_denominator"] = feed_format.frame_denominator;
 		String color_range = GetColorRange(feed_format.pixel_format);
 		if (!color_range.is_empty()) {
 			dictionary["color_range"] = color_range;
