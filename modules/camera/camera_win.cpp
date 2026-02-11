@@ -536,6 +536,12 @@ void CameraFeedWindows::read() {
 					flip_detected = (pitch < 0);
 					used_2d_buffer = true;
 
+					if (flip_detected) {
+						// scan_line points at the first visible row which is at the end of the memory block.
+						// Offset our data pointer back to the start of the block.
+						data -= buffer_length + pitch; // (pitch is negative here)
+					}
+
 					if (buffer_decoder) {
 						buffer_decoder->set_flip_vertical(flip_detected);
 					}
