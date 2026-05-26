@@ -211,9 +211,16 @@ Yuv420BufferDecoder::Yuv420BufferDecoder(CameraFeed *p_camera_feed, bool p_v_pla
 void Yuv420BufferDecoder::decode(StreamingBuffer p_buffer) {
 	const int chroma_width = width / 2;
 	const int chroma_height = height / 2;
-	const size_t y_size = (size_t)width * height;
-	const size_t chroma_size = (size_t)chroma_width * chroma_height;
-	const size_t expected_size = y_size + chroma_size * 2;
+
+	// Y plane uses the driver-reported pitch (bytesperline); chroma planes
+	// follow the V4L2 convention of half-stride. Fall back to tightly packed
+	// when no pitch is provided (legacy producers, contiguous buffers).
+	const int y_stride = p_buffer.pitch > 0 ? p_buffer.pitch : width;
+	const int chroma_stride = y_stride / 2;
+
+	const size_t y_plane_size = (size_t)y_stride * height;
+	const size_t chroma_plane_size = (size_t)chroma_stride * chroma_height;
+	const size_t expected_size = y_plane_size + chroma_plane_size * 2;
 
 	const size_t data_size = p_buffer.bytes_used > 0 ? p_buffer.bytes_used : p_buffer.length;
 	if (data_size < expected_size) {
@@ -221,16 +228,26 @@ void Yuv420BufferDecoder::decode(StreamingBuffer p_buffer) {
 	}
 
 	const uint8_t *src = (const uint8_t *)p_buffer.start;
-	const uint8_t *cb_src = src + y_size + (v_plane_first ? chroma_size : 0);
-	const uint8_t *cr_src = src + y_size + (v_plane_first ? 0 : chroma_size);
+	const uint8_t *plane2 = src + y_plane_size;
+	const uint8_t *plane3 = plane2 + chroma_plane_size;
+	const uint8_t *cb_plane = v_plane_first ? plane3 : plane2;
+	const uint8_t *cr_plane = v_plane_first ? plane2 : plane3;
 
-	memcpy(y_buffer.ptrw(), src, y_size);
+	// Copy Y plane row by row to strip stride padding.
+	uint8_t *y_dst = y_buffer.ptrw();
+	for (int y = 0; y < height; y++) {
+		memcpy(y_dst + (size_t)y * width, src + (size_t)y * y_stride, width);
+	}
 
-	// Interleave Cb and Cr into RG8 format for GPU shader (R=Cb, G=Cr).
+	// Interleave Cb and Cr into RG8 (R=Cb, G=Cr) row by row.
 	uint8_t *cbcr_dst = cbcr_buffer.ptrw();
-	for (size_t i = 0; i < chroma_size; i++) {
-		*cbcr_dst++ = cb_src[i];
-		*cbcr_dst++ = cr_src[i];
+	for (int y = 0; y < chroma_height; y++) {
+		const uint8_t *cb_row = cb_plane + (size_t)y * chroma_stride;
+		const uint8_t *cr_row = cr_plane + (size_t)y * chroma_stride;
+		for (int x = 0; x < chroma_width; x++) {
+			*cbcr_dst++ = cb_row[x];
+			*cbcr_dst++ = cr_row[x];
+		}
 	}
 
 	y_image->set_data(width, height, false, Image::FORMAT_L8, y_buffer);
