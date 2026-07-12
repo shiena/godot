@@ -144,10 +144,12 @@ void CameraFeed::set_transform(const Transform2D &p_transform) {
 }
 
 RID CameraFeed::get_texture(CameraServer::FeedImage p_which) {
+	ERR_FAIL_INDEX_V(p_which, CameraServer::FEED_IMAGES, RID());
 	return texture[p_which];
 }
 
 uint64_t CameraFeed::get_texture_tex_id(CameraServer::FeedImage p_which) {
+	ERR_FAIL_INDEX_V(p_which, CameraServer::FEED_IMAGES, 0);
 	return RenderingServer::get_singleton()->texture_get_native_handle(texture[p_which]);
 }
 
